@@ -1,6 +1,6 @@
 // Amount formatting for the ledger
 
-import { getCurrencyInfo } from './currency.js';
+import { getCurrencyInfo, type Currency } from './currency.js';
 
 /**
  * Formats cents into a human-readable string with currency symbol.
@@ -18,12 +18,12 @@ import { getCurrencyInfo } from './currency.js';
  */
 export function formatCents(
   cents: number,
-  currency: string,
+  currency: Currency,
   options?: {
     alwaysShowDecimals?: boolean;
   }
 ): string {
-  const info = getCurrencyInfo(currency as any);
+  const info = getCurrencyInfo(currency);
   
   // Handle negative amounts
   const isNegative = cents < 0;

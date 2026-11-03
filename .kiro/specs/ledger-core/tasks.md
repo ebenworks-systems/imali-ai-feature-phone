@@ -182,7 +182,7 @@
   - Use string timestamps (UTC ISO 8601) consistently
   - Test export generation with sample data including reversals
 
-- [ ] 23. **Create export format documentation**
+- [x] 23. **Create export format documentation**
   - Files: `docs/export-format.md`
   - Criteria: 11.1
   - Document every field in the export JSON format
@@ -191,7 +191,7 @@
   - Note that records include reversals and are in chronological order
 
 ## Integration and Property Testing
-- [ ] 24. **Add comprehensive property tests**
+- [x] 24. **Add comprehensive property tests**
   - Files: `test/core/property.test.ts`
   - Criteria: NF4
   - Implement property test for "balance unchanged after record and reversal"
@@ -200,7 +200,7 @@
   - Test time zone calculation properties
   - Test "who owes" excludes zero and credit balances
 
-- [ ] 25. **Add integration tests for core flows**
+- [x] 25. **Add integration tests for core flows**
   - Files: `test/integration/core.test.ts`
   - Criteria: NF3
   - Test complete flows: record → query → undo → query
@@ -210,27 +210,27 @@
   - Test undo returns which record was reversed
 
 ## Finalization
-- [ ] 26. **Create public API index**
+- [x] 26. **Create public API index**
   - Files: `src/core/index.ts`
   - Criteria: 16.1
   - Export all public functions and types
   - Add comprehensive documentation
   - Ensure no internal implementation details are exposed
 
-- [ ] 27. **Set up build and type checking**
+- [x] 27. **Set up build and type checking**
   - Files: `package.json` scripts
   - Criteria: Build process
   - Configure TypeScript compilation to `dist/`
   - Add `typecheck` script for CI
   - Test build process works correctly
 
-- [ ] 28. **Add check:screens placeholder**
+- [x] 28. **Add check:screens placeholder**
   - Files: `package.json`
   - Criteria: Screen validation placeholder
   - Add `check:screens` script that echoes "Not implemented yet"
   - This will be implemented in a later spec for USSD/SMS channels
 
-- [ ] 29. **Verify all requirements are met**
+- [x] 29. **Verify all requirements are met**
   - Review all tasks against acceptance criteria
   - Run full test suite: `npm test`
   - Run type checking: `npm run typecheck`

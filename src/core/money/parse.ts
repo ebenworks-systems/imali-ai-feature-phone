@@ -1,6 +1,6 @@
 // Amount parsing for the ledger
 
-import { getCurrencyInfo } from './currency.js';
+import { getCurrencyInfo, type Currency } from './currency.js';
 
 const CONFIRMATION_THRESHOLD_CENTS = 100_000_000; // 1,000,000.00
 
@@ -37,7 +37,7 @@ type AmountStringResult =
  * - Amounts are always multiplied by 100 to get cents
  * - Exception: decimal separator (. or , at end with 1-2 digits) is already included
  */
-export function parseAmount(input: string, currency: string): ParseResult {
+export function parseAmount(input: string, currency: Currency): ParseResult {
   const trimmed = input.trim();
   
   if (trimmed.length === 0) {
@@ -46,7 +46,7 @@ export function parseAmount(input: string, currency: string): ParseResult {
 
   // Remove currency symbol at the start
   let withoutCurrency = trimmed;
-  const currencyInfo = getCurrencyInfo(currency as any);
+  const currencyInfo = getCurrencyInfo(currency);
   
   if (trimmed.startsWith(currencyInfo.symbol)) {
     withoutCurrency = trimmed.slice(currencyInfo.symbol.length);
