@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Typecheck and tests on stop",
+      "trigger": "Stop",
+      "description": "Run typecheck and tests when agent stops",
+      "action": {
+        "type": "command",
+        "command": "if [ ! -f package.json ]; then exit 0; fi; npm run --silent typecheck || { echo \"Type check failed\"; exit 1; }; npx vitest run --reporter=dot || { echo \"Tests failed\"; exit 1; }"
+      }
+    }
+  ]
+}

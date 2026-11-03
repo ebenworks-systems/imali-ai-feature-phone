@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Run tests on save",
+      "trigger": "PostFileSave",
+      "description": "Run unit tests when TypeScript files under src/ or test/ are saved",
+      "matcher": "(^|/)(src|test)/.*\\.ts$",
+      "action": {
+        "type": "command",
+        "command": "if [ ! -f package.json ]; then echo \"no package yet\"; exit 0; fi; npx vitest run --reporter=dot",
+        "timeout_ms": 120000
+      }
+    }
+  ]
+}

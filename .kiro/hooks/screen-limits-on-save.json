@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Check screen limits on save",
+      "trigger": "PostFileSave",
+      "description": "Run screen limits check when channel or core files are saved",
+      "matcher": "(^|/)src/(channels|core)/.*\\.ts$",
+      "action": {
+        "type": "command",
+        "command": "if [ ! -f package.json ]; then exit 0; fi; node -e \"process.exit(require('./package.json').scripts?.['check:screens']?0:1)\" || exit 0; npm run --silent check:screens 1>&2",
+        "timeout_ms": 120000
+      }
+    }
+  ]
+}
