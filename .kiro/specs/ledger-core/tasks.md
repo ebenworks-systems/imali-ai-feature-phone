@@ -112,7 +112,7 @@
   - All functions accept explicit `now` parameter
 
 ## Business Logic Operations
-- [ ] 15. **Implement sale recording**
+- [x] 15. **Implement sale recording**
   - Files: `src/core/ledger/operations.ts`, `test/core/ledger/operations.test.ts`
   - Criteria: 4.1, 4.5, 14.1, 15.1
   - Implement `recordSale()` with proper error handling and time injection
@@ -120,14 +120,14 @@
   - Handle confirmation requirement for large amounts (> 100,000,000 cents)
   - Test all success and error scenarios
 
-- [ ] 16. **Implement expense recording**
+- [x] 16. **Implement expense recording**
   - Files: `src/core/ledger/operations.ts`
   - Criteria: 4.2, 4.5, 14.1, 15.1
   - Implement `recordExpense()` following same pattern with time injection
   - Return figure object (kind: 'expensesToday')
   - Test expense recording
 
-- [ ] 17. **Implement debt and payment recording**
+- [x] 17. **Implement debt and payment recording**
   - Files: `src/core/ledger/operations.ts`
   - Criteria: 4.3, 4.4, 4.5, 5.1, 5.2, 14.1, 15.1
   - Implement `recordDebt()` and `recordPayment()` with time injection
@@ -135,7 +135,7 @@
   - Return figure object (kind: 'customerBalance' with customer)
   - Test customer matching using keys and display name preservation
 
-- [ ] 18. **Implement undo operation**
+- [x] 18. **Implement undo operation**
   - Files: `src/core/ledger/operations.ts`
   - Criteria: 6.1, 6.2, 6.3, 12.3, 14.1, 15.1, 15.2
   - Implement `undoLastRecord()` finding most recent reversible record
@@ -145,7 +145,7 @@
   - Test undo scenarios and edge cases
 
 ## Query Operations
-- [ ] 19. **Implement today's summary query from records**
+- [x] 19. **Implement today's summary query from records**
   - Files: `src/core/queries/today.ts`, `test/core/queries/today.test.ts`
   - Criteria: 8.1, 12.4
   - Implement `getTodaySummary()` using shop's time zone and time injection
@@ -154,7 +154,7 @@
   - Calculate new debts and payments for today
   - Test with different time zones and day boundaries
 
-- [ ] 20. **Implement customer balance queries from records**
+- [x] 20. **Implement customer balance queries from records**
   - Files: `src/core/queries/customers.ts`, `test/core/queries/customers.test.ts`
   - Criteria: 8.2, 8.3, 12.4
   - Implement `getWhoOwes()` from records, sorted by amount (largest first)
@@ -163,7 +163,7 @@
   - Implement `getCustomerBalance()` with name normalization using keys
   - Test balance calculations with multiple transactions
 
-- [ ] 21. **Implement day close summary**
+- [x] 21. **Implement day close summary**
   - Files: `src/core/queries/dayClose.ts`, `test/core/queries/dayClose.test.ts`
   - Criteria: 13.1, 13.2
   - Implement `getDayCloseSummary()` extending today's summary
@@ -172,7 +172,7 @@
   - Test closing summary calculations for today
 
 ## Export Functionality
-- [ ] 22. **Implement export data generation**
+- [x] 22. **Implement export data generation**
   - Files: `src/core/export/generator.ts`, `test/core/export/generator.test.ts`
   - Criteria: 11.1
   - Implement `generateExport()` with correct JSON structure
