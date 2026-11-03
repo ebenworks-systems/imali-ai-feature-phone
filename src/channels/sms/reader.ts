@@ -13,7 +13,7 @@ import { parseAmount, type Currency } from '../../core/index.js';
 
 export type IntentKind =
   | 'sale' | 'expense' | 'debt' | 'payment' | 'undo' | 'today'
-  | 'whoOwes' | 'balance' | 'close' | 'help' | 'unknown';
+  | 'whoOwes' | 'balance' | 'close' | 'help' | 'unknown' | 'ambiguous';
 
 export interface SaleIntent {
   kind: 'sale';
@@ -51,13 +51,19 @@ export interface BalanceIntent {
   customer: string;
 }
 
+export interface AmbiguousIntent {
+  kind: 'ambiguous';
+  options: Array<{ cents: number; quantity?: number }>;
+  base: { kind: 'sale' | 'expense' };
+}
+
 export interface SimpleIntent {
   kind: 'undo' | 'today' | 'close' | 'help' | 'unknown';
 }
 
 export type Intent =
   | SaleIntent | ExpenseIntent | DebtIntent | PaymentIntent
-  | WhoOwesIntent | BalanceIntent | SimpleIntent;
+  | WhoOwesIntent | BalanceIntent | AmbiguousIntent | SimpleIntent;
 
 // ============================================================================
 // Normalizing Helper
@@ -71,10 +77,17 @@ function normalize(text: string): string {
 }
 
 /**
- * Split text into words for parsing
+ * Split text into words for parsing (normalized)
  */
 function words(text: string): string[] {
   return normalize(text).split(' ');
+}
+
+/**
+ * Split text into words preserving original case (but still collapsing spaces)
+ */
+function wordsPreserveCase(text: string): string[] {
+  return text.trim().replace(/\s+/g, ' ').split(' ');
 }
 
 // ============================================================================
@@ -92,8 +105,9 @@ function words(text: string): string[] {
  * 6. "3 bread @15" -> {quantity, item, @unit_price}
  * 7. "3 bread x15" -> {quantity, item, x_unit_price}
  */
-function trySale(text: string, currency: Currency): SaleIntent | null {
+function trySale(text: string, currency: Currency): SaleIntent | AmbiguousIntent | null {
   const w = words(text);
+  const wPreserve = wordsPreserveCase(text);
 
   // Pattern 5, 6, 7: with unit price (at, @, x)
   // Look for "at", "@", "x" as separate words OR @number, xnumber as single words
@@ -132,14 +146,14 @@ function trySale(text: string, currency: Currency): SaleIntent | null {
         const potentialQty = parseInt(beforePrice[qtyIdx], 10);
         if (!isNaN(potentialQty) && potentialQty > 0) {
           qty = potentialQty;
-          item = beforePrice.slice(qtyIdx + 1).join(' ');
+          item = wPreserve.slice(qtyIdx + 1, unitPriceIdx).join(' ');
         }
       } else if (beforePrice.length >= 2) {
         // "3 bread @15"
         const potentialQty = parseInt(beforePrice[0], 10);
         if (!isNaN(potentialQty) && potentialQty > 0) {
           qty = potentialQty;
-          item = beforePrice.slice(1).join(' ');
+          item = wPreserve.slice(1, unitPriceIdx).join(' ');
         }
       }
       
@@ -162,15 +176,25 @@ function trySale(text: string, currency: Currency): SaleIntent | null {
       // Words from index 2 onwards are item + amount
       // Find where the amount starts (could be any numeric-like pattern)
       for (let i = 2; i < w.length; i++) {
-        const amountText = w.slice(i).join(' ');
+        const amountText = wPreserve.slice(i).join(' ');
         const result = parseAmount(amountText, currency);
         if (result.type === 'success') {
-          const item = w.slice(2, i).join(' ');
+          const itemPart = w.slice(2, i).join(' '); // Use normalized (lowercase) for item
           return {
             kind: 'sale',
             cents: result.amount.cents,
-            item: item || undefined,
+            item: itemPart || undefined,
             quantity: potentialQty
+          };
+        } else if (result.type === 'ambiguous') {
+          // Ambiguous amount - return as ambiguous intent
+          return {
+            kind: 'ambiguous',
+            options: result.possibleAmounts.map(amt => ({
+              cents: amt.cents,
+              quantity: potentialQty
+            })),
+            base: { kind: 'sale' }
           };
         }
       }
@@ -181,14 +205,14 @@ function trySale(text: string, currency: Currency): SaleIntent | null {
   if (w[0] === 'sold' && w.length >= 2) {
     // Try from the end - find the first word that parses as an amount
     for (let i = w.length - 1; i >= 1; i--) {
-      const amountText = w[i];
+      const amountText = wPreserve[i]; // Use preserved case for parseAmount
       const result = parseAmount(amountText, currency);
       if (result.type === 'success') {
-        const item = w.slice(1, i).join(' ');
+        const itemPart = w.slice(1, i).join(' '); // Use normalized (lowercase) for item
         return {
           kind: 'sale',
           cents: result.amount.cents,
-          item: item || undefined
+          item: itemPart || undefined
         };
       }
     }
@@ -196,7 +220,7 @@ function trySale(text: string, currency: Currency): SaleIntent | null {
 
   // Pattern 3: "sale 45"
   if (w[0] === 'sale' && w.length >= 2) {
-    const amountText = w.slice(1).join(' ');
+    const amountText = wPreserve.slice(1).join(' ');
     const result = parseAmount(amountText, currency);
     if (result.type === 'success') {
       return {
@@ -209,13 +233,13 @@ function trySale(text: string, currency: Currency): SaleIntent | null {
   // Pattern 4: "45 bread"
   // First word is an amount, rest is item
   if (w.length >= 2) {
-    const result = parseAmount(w[0], currency);
+    const result = parseAmount(wPreserve[0], currency);
     if (result.type === 'success') {
-      const item = w.slice(1).join(' ');
+      const itemPart = w.slice(1).join(' '); // Use normalized (lowercase) for item
       return {
         kind: 'sale',
         cents: result.amount.cents,
-        item: item || undefined
+        item: itemPart || undefined
       };
     }
   }
@@ -236,48 +260,69 @@ function trySale(text: string, currency: Currency): SaleIntent | null {
  * 11. "bought stock 500"
  * 12. "paid 150 rent" (when no customer name before "paid")
  */
-function tryExpense(text: string, currency: Currency): ExpenseIntent | null {
+function tryExpense(text: string, currency: Currency): ExpenseIntent | AmbiguousIntent | null {
   const w = words(text);
+  const wPreserve = wordsPreserveCase(text);
 
   // Pattern 9: "spend 120 on transport"
   // Check this before pattern 8 to avoid conflicts
   if (w[0] === 'spend' && w.length >= 4 && w[2] === 'on') {
-    const amountText = w[1];
+    const amountText = wPreserve[1];
     const result = parseAmount(amountText, currency);
     if (result.type === 'success') {
-      const item = w.slice(3).join(' ');
+      const itemPart = w.slice(3).join(' '); // Use normalized (lowercase) for item
       return {
         kind: 'expense',
         cents: result.amount.cents,
-        item: item || undefined
+        item: itemPart || undefined
       };
     }
   }
 
-  // Pattern 8: "spent 120 transport"
+  // Pattern 8: "spent 120 transport" or "spent 1 200 stock"
   if ((w[0] === 'spent' || w[0] === 'spend') && w.length >= 2) {
-    const amountText = w[1];
-    const result = parseAmount(amountText, currency);
-    if (result.type === 'success') {
-      const item = w.slice(2).join(' ');
-      return {
-        kind: 'expense',
-        cents: result.amount.cents,
-        item: item || undefined
-      };
+    // Try from index 1 onwards, starting with longer sequences
+    for (let i = w.length - 1; i >= 1; i--) {
+      const amountText = wPreserve.slice(1, i + 1).join(' ');
+      const result = parseAmount(amountText, currency);
+      if (result.type === 'success') {
+        const itemPart = w.slice(i + 1).join(' '); // Use normalized (lowercase) for item
+        return {
+          kind: 'expense',
+          cents: result.amount.cents,
+          item: itemPart || undefined
+        };
+      } else if (result.type === 'ambiguous') {
+        // For ambiguous amounts with an item, take the first (longer) interpretation
+        if (i + 1 < w.length) {
+          const itemPart = w.slice(i + 1).join(' ');
+          return {
+            kind: 'expense',
+            cents: result.possibleAmounts[0].cents,
+            item: itemPart || undefined
+          };
+        } else {
+          // No item, so it's ambiguous
+          return {
+            kind: 'ambiguous',
+            options: result.possibleAmounts,
+            base: { kind: 'expense' }
+          };
+        }
+      }
     }
   }
 
   // Pattern 10: "expense 120 stock"
   if (w[0] === 'expense' && w.length >= 2) {
-    const amountText = w[1];
+    const amountText = wPreserve[1];
     const result = parseAmount(amountText, currency);
     if (result.type === 'success') {
-      const item = w.slice(2).join(' ');
+      const itemPart = w.slice(2).join(' '); // Use normalized (lowercase) for item
       return {
         kind: 'expense',
         cents: result.amount.cents,
-        item: item || undefined
+        item: itemPart || undefined
       };
     }
   }
@@ -286,14 +331,14 @@ function tryExpense(text: string, currency: Currency): ExpenseIntent | null {
   if (w[0] === 'bought' && w.length >= 2) {
     // Try from the end - find the first word that parses as an amount
     for (let i = w.length - 1; i >= 1; i--) {
-      const amountText = w[i];
+      const amountText = wPreserve[i];
       const result = parseAmount(amountText, currency);
       if (result.type === 'success') {
-        const item = w.slice(1, i).join(' ');
+        const itemPart = w.slice(1, i).join(' '); // Use normalized (lowercase) for item
         return {
           kind: 'expense',
           cents: result.amount.cents,
-          item: item || undefined
+          item: itemPart || undefined
         };
       }
     }
@@ -305,14 +350,14 @@ function tryExpense(text: string, currency: Currency): ExpenseIntent | null {
   // An expense has: paid Amount Item
   // We'll handle this by checking if it starts with "paid" at position 0
   if (w[0] === 'paid' && w.length >= 2) {
-    const amountText = w[1];
+    const amountText = wPreserve[1];
     const result = parseAmount(amountText, currency);
     if (result.type === 'success') {
-      const item = w.slice(2).join(' ');
+      const itemPart = w.slice(2).join(' '); // Use normalized (lowercase) for item
       return {
         kind: 'expense',
         cents: result.amount.cents,
-        item: item || undefined
+        item: itemPart || undefined
       };
     }
   }
@@ -331,48 +376,55 @@ function tryExpense(text: string, currency: Currency): ExpenseIntent | null {
  * 14. "Tendai owes 20"
  * 15. "credit Tendai 20 sugar"
  * 16. "Tendai took 20 on credit"
+ * Multi-word names: "Mai Rudo owes 20 sugar"
  */
 function tryDebt(text: string, currency: Currency): DebtIntent | null {
   const w = words(text);
+  const wPreserve = wordsPreserveCase(text);
 
-  // Pattern 13: "Tendai owes 20 sugar"
-  if (w.length >= 3 && w[1] === 'owes') {
-    const customer = w[0];
-    const amountText = w[2];
+  // Pattern 13: "Tendai owes 20 sugar" or "Mai Rudo owes 20 sugar"
+  const owesIdx = w.indexOf('owes');
+  if (owesIdx > 0 && owesIdx + 1 < w.length) {
+    const customer = wPreserve.slice(0, owesIdx).join(' ');
+    const amountText = wPreserve[owesIdx + 1];
     const result = parseAmount(amountText, currency);
     if (result.type === 'success') {
-      const item = w.slice(3).join(' ');
+      const itemPart = w.slice(owesIdx + 2).join(' '); // Use normalized (lowercase) for item
       return {
         kind: 'debt',
         customer,
         cents: result.amount.cents,
-        item: item || undefined
+        item: itemPart || undefined
       };
     }
   }
 
-  // Pattern 15: "credit Tendai 20 sugar"
+  // Pattern 15: "credit Tendai 20 sugar" or "credit Mai Rudo 20 sugar"
   if (w[0] === 'credit' && w.length >= 3) {
-    const customer = w[1];
-    const amountText = w[2];
-    const result = parseAmount(amountText, currency);
-    if (result.type === 'success') {
-      const item = w.slice(3).join(' ');
-      return {
-        kind: 'debt',
-        customer,
-        cents: result.amount.cents,
-        item: item || undefined
-      };
+    // Find the amount - it's the first thing that parses as an amount starting from index 1
+    for (let i = 1; i < w.length; i++) {
+      const amountText = wPreserve[i];
+      const result = parseAmount(amountText, currency);
+      if (result.type === 'success') {
+        const customer = wPreserve.slice(1, i).join(' ');
+        const itemPart = w.slice(i + 1).join(' '); // Use normalized (lowercase) for item
+        return {
+          kind: 'debt',
+          customer,
+          cents: result.amount.cents,
+          item: itemPart || undefined
+        };
+      }
     }
   }
 
   // Pattern 16: "Tendai took 20 on credit"
-  if (w.length >= 4 && w[1] === 'took' && w[3] === 'on' && w[4] === 'credit') {
-    const customer = w[0];
-    const amountText = w[2];
+  const tookIdx = w.indexOf('took');
+  if (tookIdx > 0 && tookIdx + 1 < w.length) {
+    const amountText = wPreserve[tookIdx + 1];
     const result = parseAmount(amountText, currency);
-    if (result.type === 'success') {
+    if (result.type === 'success' && w[tookIdx + 2] === 'on' && w[tookIdx + 3] === 'credit') {
+      const customer = wPreserve.slice(0, tookIdx).join(' ');
       return {
         kind: 'debt',
         customer,
@@ -394,44 +446,49 @@ function tryDebt(text: string, currency: Currency): DebtIntent | null {
  * 17. "Tendai paid 10"
  * 18. "Tendai paid back 10"
  * 19. "received 10 from Tendai"
+ * Multi-word names: "Mai Rudo paid 10", "received 10 from Mai Rudo"
  */
 function tryPayment(text: string, currency: Currency): PaymentIntent | null {
   const w = words(text);
+  const wPreserve = wordsPreserveCase(text);
 
-  // Pattern 17: "Tendai paid 10"
-  if (w.length >= 3 && w[1] === 'paid') {
-    const customer = w[0];
-    const amountText = w.slice(2).join(' ');
-    const result = parseAmount(amountText, currency);
-    if (result.type === 'success') {
-      return {
-        kind: 'payment',
-        customer,
-        cents: result.amount.cents
-      };
+  // Pattern 17: "Tendai paid 10" or "Mai Rudo paid 10"
+  const paidIdx = w.indexOf('paid');
+  if (paidIdx > 0 && paidIdx + 1 < w.length) {
+    // Check if "back" follows "paid"
+    if (w[paidIdx + 1] === 'back' && paidIdx + 2 < w.length) {
+      // Pattern 18: "Tendai paid back 10"
+      const customer = wPreserve.slice(0, paidIdx).join(' ');
+      const amountText = wPreserve.slice(paidIdx + 2).join(' ');
+      const result = parseAmount(amountText, currency);
+      if (result.type === 'success') {
+        return {
+          kind: 'payment',
+          customer,
+          cents: result.amount.cents
+        };
+      }
+    } else {
+      // Pattern 17: "Tendai paid 10"
+      const customer = wPreserve.slice(0, paidIdx).join(' ');
+      const amountText = wPreserve.slice(paidIdx + 1).join(' ');
+      const result = parseAmount(amountText, currency);
+      if (result.type === 'success') {
+        return {
+          kind: 'payment',
+          customer,
+          cents: result.amount.cents
+        };
+      }
     }
   }
 
-  // Pattern 18: "Tendai paid back 10"
-  if (w.length >= 4 && w[1] === 'paid' && w[2] === 'back') {
-    const customer = w[0];
-    const amountText = w.slice(3).join(' ');
-    const result = parseAmount(amountText, currency);
-    if (result.type === 'success') {
-      return {
-        kind: 'payment',
-        customer,
-        cents: result.amount.cents
-      };
-    }
-  }
-
-  // Pattern 19: "received 10 from Tendai"
+  // Pattern 19: "received 10 from Tendai" or "received 10 from Mai Rudo"
   if (w[0] === 'received' && w.length >= 3) {
-    const amountText = w[1];
+    const amountText = wPreserve[1];
     const result = parseAmount(amountText, currency);
     if (result.type === 'success' && w[2] === 'from') {
-      const customer = w.slice(3).join(' ');
+      const customer = wPreserve.slice(3).join(' ');
       return {
         kind: 'payment',
         customer,
@@ -526,20 +583,21 @@ function tryWhoOwes(text: string): WhoOwesIntent | null {
 /**
  * Try to parse "balance" (how much does X owe) intent.
  * Patterns:
- * 23. "how much does Tendai owe", "Tendai?"
+ * 23. "how much does Tendai owe", "how much does Mai Rudo owe", "Tendai?"
  */
 function tryBalance(text: string): BalanceIntent | null {
   const w = words(text);
+  const wPreserve = wordsPreserveCase(text);
 
-  // "how much does Tendai owe"
-  if (w[0] === 'how' && w[1] === 'much' && w[2] === 'does' && w[4] === 'owe') {
-    const customer = w[3];
+  // "how much does Tendai owe" or "how much does Mai Rudo owe"
+  if (w[0] === 'how' && w[1] === 'much' && w[2] === 'does' && w[w.length - 1] === 'owe') {
+    const customer = wPreserve.slice(3, -1).join(' ');
     return { kind: 'balance', customer };
   }
 
   // "Tendai?" - single word ending with ?
   if (w.length === 1 && w[0].endsWith('?')) {
-    const customer = w[0].replace('?', '');
+    const customer = wPreserve[0].replace('?', '');
     if (customer.length > 0) {
       return { kind: 'balance', customer };
     }

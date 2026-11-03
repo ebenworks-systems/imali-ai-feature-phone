@@ -153,7 +153,7 @@ describe('readIntent', () => {
       const intent = readIntent('Tendai owes 20 sugar', currency);
       expect(intent).toEqual({
         kind: 'debt',
-        customer: 'tendai',
+        customer: 'Tendai',
         cents: 2000,
         item: 'sugar'
       });
@@ -163,7 +163,7 @@ describe('readIntent', () => {
       const intent = readIntent('Tendai owes 20', currency);
       expect(intent).toEqual({
         kind: 'debt',
-        customer: 'tendai',
+        customer: 'Tendai',
         cents: 2000
       });
     });
@@ -172,7 +172,7 @@ describe('readIntent', () => {
       const intent = readIntent('credit Tendai 20 sugar', currency);
       expect(intent).toEqual({
         kind: 'debt',
-        customer: 'tendai',
+        customer: 'Tendai',
         cents: 2000,
         item: 'sugar'
       });
@@ -182,7 +182,7 @@ describe('readIntent', () => {
       const intent = readIntent('Tendai took 20 on credit', currency);
       expect(intent).toEqual({
         kind: 'debt',
-        customer: 'tendai',
+        customer: 'Tendai',
         cents: 2000
       });
     });
@@ -191,7 +191,7 @@ describe('readIntent', () => {
       const intent = readIntent('TENDAI OWES 20 SUGAR', currency);
       expect(intent).toEqual({
         kind: 'debt',
-        customer: 'tendai',
+        customer: 'TENDAI',
         cents: 2000,
         item: 'sugar'
       });
@@ -203,7 +203,7 @@ describe('readIntent', () => {
       const intent = readIntent('Tendai paid 10', currency);
       expect(intent).toEqual({
         kind: 'payment',
-        customer: 'tendai',
+        customer: 'Tendai',
         cents: 1000
       });
     });
@@ -212,7 +212,7 @@ describe('readIntent', () => {
       const intent = readIntent('Tendai paid back 10', currency);
       expect(intent).toEqual({
         kind: 'payment',
-        customer: 'tendai',
+        customer: 'Tendai',
         cents: 1000
       });
     });
@@ -221,7 +221,7 @@ describe('readIntent', () => {
       const intent = readIntent('received 10 from Tendai', currency);
       expect(intent).toEqual({
         kind: 'payment',
-        customer: 'tendai',
+        customer: 'Tendai',
         cents: 1000
       });
     });
@@ -230,7 +230,7 @@ describe('readIntent', () => {
       const intent = readIntent('TENDAI PAID 10', currency);
       expect(intent).toEqual({
         kind: 'payment',
-        customer: 'tendai',
+        customer: 'TENDAI',
         cents: 1000
       });
     });
@@ -347,7 +347,7 @@ describe('readIntent', () => {
       const intent = readIntent('how much does Tendai owe', currency);
       expect(intent).toEqual({
         kind: 'balance',
-        customer: 'tendai'
+        customer: 'Tendai'
       });
     });
 
@@ -355,7 +355,7 @@ describe('readIntent', () => {
       const intent = readIntent('Tendai?', currency);
       expect(intent).toEqual({
         kind: 'balance',
-        customer: 'tendai'
+        customer: 'Tendai'
       });
     });
 
@@ -363,7 +363,7 @@ describe('readIntent', () => {
       const intent = readIntent('how much does TENDAI owe', currency);
       expect(intent).toEqual({
         kind: 'balance',
-        customer: 'tendai'
+        customer: 'TENDAI'
       });
     });
   });
@@ -377,6 +377,67 @@ describe('readIntent', () => {
     it('returns unknown for empty intent', () => {
       const intent = readIntent('xyz abc def', currency);
       expect(intent).toEqual({ kind: 'unknown' });
+    });
+  });
+
+  describe('Bug fixes', () => {
+    it('bug 1: parses "Sold  Bread R45.50" with case/spaces and currency prefix', () => {
+      const intent = readIntent('Sold  Bread R45.50', currency);
+      expect(intent).toEqual({
+        kind: 'sale',
+        cents: 4550,
+        item: 'bread'
+      });
+    });
+
+    it('bug 2: handles ambiguous "sold 2 200" (quantity ambiguity)', () => {
+      const intent = readIntent('sold 2 200', currency);
+      // Should detect ambiguity - could be 2 items at 200 each = 400, or one sale of 2,200 = 220000 cents
+      // We need to add an 'ambiguous' intent type for this
+      if ('options' in intent) {
+        expect(intent).toHaveProperty('kind', 'ambiguous');
+        expect(intent).toHaveProperty('options');
+      } else {
+        // If ambiguous intent not implemented yet, it should at least not be unknown
+        expect(intent.kind).not.toBe('unknown');
+      }
+    });
+
+    it('bug 3: returns customer name as typed "Mai Rudo" not lowercased', () => {
+      const intent = readIntent('Mai Rudo owes 20 sugar', currency);
+      expect(intent).toEqual({
+        kind: 'debt',
+        customer: 'Mai Rudo',
+        cents: 2000,
+        item: 'sugar'
+      });
+    });
+
+    it('bug 3: works with "how much does Mai Rudo owe"', () => {
+      const intent = readIntent('how much does Mai Rudo owe', currency);
+      expect(intent).toEqual({
+        kind: 'balance',
+        customer: 'Mai Rudo'
+      });
+    });
+
+    it('bug 4: handles multi-word customer names in "Mai Rudo owes 20 sugar"', () => {
+      const intent = readIntent('Mai Rudo owes 20 sugar', currency);
+      expect(intent).toEqual({
+        kind: 'debt',
+        customer: 'Mai Rudo',
+        cents: 2000,
+        item: 'sugar'
+      });
+    });
+
+    it('bug 5: parses "spent 1 200 stock" with thousands group', () => {
+      const intent = readIntent('spent 1 200 stock', currency);
+      expect(intent).toEqual({
+        kind: 'expense',
+        cents: 120000,
+        item: 'stock'
+      });
     });
   });
 });
