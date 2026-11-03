@@ -62,7 +62,7 @@ Plain text messages (SMS) to record sales, expenses, customer debts, payments, a
 
 29. When a pending question expires (over 10 minutes), it is cleared and the next message is read normally.
 
-30. When an amount is over 1,000,000.00 (10000000 cents), the reply asks "Reply yes to save sale R1,500,000." and waits for a yes/no confirmation.
+30. When an amount is over 1,000,000.00 (100,000,000 cents), the reply asks "Reply yes to save sale R1,500,000." and waits for a yes/no confirmation.
 
 31. A reply for a successful sale says "Saved: sale R45 (3 bread). Sales today R1,285. Reply undo to cancel." with amount, optional quantity and item, new sales total and count.
 

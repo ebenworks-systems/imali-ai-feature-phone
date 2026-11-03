@@ -2,21 +2,21 @@
 
 ## Core Reader Module
 
-- [ ] Create `src/channels/sms/reader.ts` with Intent types and readIntent(text, currency) function; parse all sale shapes (requirements 1–7) and return SaleIntent with correct cents, item, quantity.
+- [x] Create `src/channels/sms/reader.ts` with Intent types and readIntent(text, currency) function; parse all sale shapes (requirements 1–7) and return SaleIntent with correct cents, item, quantity.
 
-- [ ] Add expense patterns to readIntent() covering spent, spend, expense, bought, paid-as-expense shapes (requirements 8–12); return ExpenseIntent.
+- [x] Add expense patterns to readIntent() covering spent, spend, expense, bought, paid-as-expense shapes (requirements 8–12); return ExpenseIntent.
 
-- [ ] Add debt patterns (owes, credit, took...on credit) to readIntent() (requirements 13–16); return DebtIntent with customer and optional item.
+- [x] Add debt patterns (owes, credit, took...on credit) to readIntent() (requirements 13–16); return DebtIntent with customer and optional item.
 
-- [ ] Add payment patterns (customer paid, paid back, received from) to readIntent() (requirements 17–19); return PaymentIntent with customer.
+- [x] Add payment patterns (customer paid, paid back, received from) to readIntent() (requirements 17–19); return PaymentIntent with customer.
 
-- [ ] Add action patterns to readIntent(): undo/cancel/oops, today/sales/total, close/summary/end of day, help/?/menu (requirements 20–25); return SimpleIntent for each.
+- [x] Add action patterns to readIntent(): undo/cancel/oops, today/sales/total, close/summary/end of day, help/?/menu (requirements 20–25); return SimpleIntent for each.
 
-- [ ] Add who owes parsing to readIntent() supporting "who owes", "debts", "owes", "owes 2" (page number); return WhoOwesIntent with page (requirement 22).
+- [x] Add who owes parsing to readIntent() supporting "who owes", "debts", "owes", "owes 2" (page number); return WhoOwesIntent with page (requirement 22).
 
-- [ ] Add balance query parsing to readIntent() for "how much does Tendai owe" and "Tendai?"; return BalanceIntent with customer name (requirement 23).
+- [x] Add balance query parsing to readIntent() for "how much does Tendai owe" and "Tendai?"; return BalanceIntent with customer name (requirement 23).
 
-- [ ] Update readIntent() to return {unknown} for unmatched text (requirement 26); write unit tests covering all patterns (requirements 1–26).
+- [x] Update readIntent() to return {unknown} for unmatched text (requirement 26); write unit tests covering all patterns (requirements 1–26).
 
 ## Pending Store Module
 
