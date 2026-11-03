@@ -1,34 +1,34 @@
 # Ledger Core - Tasks
 
 ## Project Setup
-- [ ] 1. **Initialize project structure**
+- [x] 1. **Initialize project structure**
   - Files: `package.json`, `tsconfig.json`, `.gitignore`, `.env.example`
   - Criteria: 16.1
   - Create basic project structure with TypeScript strict mode, ES modules
   - Add scripts: `build`, `typecheck`, `test`, `check:screens` (placeholder)
 
-- [ ] 2. **Configure testing framework**
+- [x] 2. **Configure testing framework**
   - Files: `package.json`, `vitest.config.ts`
   - Criteria: NF3 (Testability)
   - Set up Vitest with TypeScript support
   - Configure coverage reporting
   - Add fast-check as dev dependency for property testing
 
-- [ ] 3. **Set up development environment**
+- [x] 3. **Set up development environment**
   - Files: `.gitignore`, `.env.example`
   - Criteria: Tech stack setup
   - Configure git to ignore `node_modules`, `dist`, `.env` files
   - Create `.env.example` with empty environment variable placeholders
 
 ## Core Money Module
-- [ ] 4. **Implement currency types and info**
+- [x] 4. **Implement currency types and info**
   - Files: `src/core/money/currency.ts`
   - Criteria: 2.1, NF6
   - Define `Currency` type and `CurrencyInfo` interface (no thousandsSeparator field)
   - Implement `getCurrencyInfo()` for all 7 currencies
   - Test currency symbol mapping (ASCII only)
 
-- [ ] 5. **Implement amount parsing**
+- [x] 5. **Implement amount parsing**
   - Files: `src/core/money/parse.ts`, `test/core/money/parse.test.ts`
   - Criteria: 1.1, 1.2, 1.3, 7.1
   - Implement `parseAmount()` supporting all input forms
@@ -37,7 +37,7 @@
   - Add unit tests for all parsing scenarios
   - Implement `requiresConfirmation(cents)` checking cents > 100,000,000
 
-- [ ] 6. **Implement amount formatting**
+- [x] 6. **Implement amount formatting**
   - Files: `src/core/money/format.ts`, `test/core/money/format.test.ts`
   - Criteria: 2.1
   - Implement `formatCents()` with proper formatting rules
@@ -45,14 +45,14 @@
   - Add thousands comma formatting (comma always, no locale dependency)
   - Test all currency symbols and edge cases
 
-- [ ] 7. **Add property tests for money operations**
+- [x] 7. **Add property tests for money operations**
   - Files: `test/core/money/property.test.ts`
   - Criteria: NF4
   - Implement fast-check property tests for parse/format round trips
   - Test parse ambiguity detection properties
 
 ## Time Abstraction
-- [ ] 8. **Implement clock abstraction**
+- [x] 8. **Implement clock abstraction**
   - Files: `src/core/clock.ts`, `test/core/clock.test.ts`
   - Criteria: 10.1, 10.2
   - Define `Clock` interface with `now()` method
@@ -60,7 +60,7 @@
   - Test mockable clock for tests
 
 ## Shop and Record Types
-- [ ] 9. **Define shop type and validation**
+- [x] 9. **Define shop type and validation**
   - Files: `src/core/shops/types.ts`, `test/core/shops/types.test.ts`
   - Criteria: 3.1, 16.1
   - Define `Shop` interface with `createdAt` as string (UTC ISO 8601)
@@ -68,7 +68,7 @@
   - Add validation for shop name (≤24 characters)
   - Test shop creation and validation
 
-- [ ] 10. **Define record types and factories**
+- [x] 10. **Define record types and factories**
   - Files: `src/core/records/types.ts`, `test/core/records/types.test.ts`
   - Criteria: 4.1, 4.2, 4.3, 4.4, 5.1, 16.1
   - Define all record types with `createdAt` as string (UTC ISO 8601)
@@ -77,7 +77,7 @@
   - Implement `customerDisplayName()` and `customerKey()` functions
   - Debt/payment records store both `customerDisplayName` and `customerKey`
 
-- [ ] 11. **Implement record validation**
+- [x] 11. **Implement record validation**
   - Files: `src/core/records/validation.ts`, `test/core/records/validation.test.ts`
   - Criteria: 4.5, 7.1
   - Validate amount > 0, reject zero/negative amounts
@@ -85,14 +85,14 @@
   - Test amount validation with correct confirmation threshold (100,000,000 cents)
 
 ## LedgerStore Interface
-- [ ] 12. **Define minimal LedgerStore interface**
+- [x] 12. **Define minimal LedgerStore interface**
   - Files: `src/store/interface.ts`
   - Criteria: 12.1, 12.4
   - Define async interface with minimal methods: createShop, findShopById, findShopByPhone, appendRecord, findRecordById, findReversalOf, listRecords
   - Define `RecordAlreadyReversedError` class
   - No business logic methods (getTodaySummary, getCustomerBalances, etc.)
 
-- [ ] 13. **Implement in-memory store**
+- [x] 13. **Implement in-memory store**
   - Files: `src/store/memory/store.ts`, `test/store/memory/store.test.ts`
   - Criteria: 12.2, 12.3
   - Implement minimal LedgerStore interface with in-memory data structures
@@ -101,7 +101,7 @@
   - Test store operations and error cases
 
 ## Time Zone Handling
-- [ ] 14. **Implement time zone utilities with time injection**
+- [x] 14. **Implement time zone utilities with time injection**
   - Files: `src/core/timezone/utils.ts`, `test/core/timezone/utils.test.ts`
   - Criteria: 8.1, 9.1, 13.1, NF7
   - Implement `getShopLocalDate(shop, date)` using Intl.DateTimeFormat
