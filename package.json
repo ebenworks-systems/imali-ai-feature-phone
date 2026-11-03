@@ -1,0 +1,26 @@
+{
+  "name": "imali-ledger-core",
+  "version": "0.1.0",
+  "description": "Imali AI ledger-core: shop ledger for feature phones",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check:screens": "echo \"Not implemented yet\"",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "fast-check": "^3.23.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "files": [
+    "dist/",
+    "docs/"
+  ]
+}
