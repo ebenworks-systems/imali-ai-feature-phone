@@ -98,8 +98,8 @@ describe('parseAmount', () => {
       expect(result.type).toBe('ambiguous');
       if (result.type === 'ambiguous') {
         expect(result.possibleAmounts).toEqual([
-          { cents: 2200, requiresConfirmation: false },  // one sale of 2200
-          { cents: 400, requiresConfirmation: false }     // 2 items at 200 each
+          { cents: 20000, requiresConfirmation: false },  // 2 items for 200 Rands total
+          { cents: 220000, requiresConfirmation: false }   // one sale of 2200 Rands
         ]);
       }
     });
@@ -109,8 +109,8 @@ describe('parseAmount', () => {
       expect(result.type).toBe('ambiguous');
       if (result.type === 'ambiguous') {
         expect(result.possibleAmounts).toEqual([
-          { cents: 5500, requiresConfirmation: false },  // one sale of 5500
-          { cents: 2500, requiresConfirmation: false }     // 5 items at 500 each
+          { cents: 50000, requiresConfirmation: false },  // 5 items for 500 Rands total
+          { cents: 550000, requiresConfirmation: false }   // one sale of 5500 Rands
         ]);
       }
     });

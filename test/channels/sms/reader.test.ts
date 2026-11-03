@@ -390,17 +390,28 @@ describe('readIntent', () => {
       });
     });
 
-    it('bug 2: handles ambiguous "sold 2 200" (quantity ambiguity)', () => {
+    it('bug 2: handles ambiguous "sold 2 200"', () => {
       const intent = readIntent('sold 2 200', currency);
-      // Should detect ambiguity - could be 2 items at 200 each = 400, or one sale of 2,200 = 220000 cents
-      // We need to add an 'ambiguous' intent type for this
-      if ('options' in intent) {
-        expect(intent).toHaveProperty('kind', 'ambiguous');
-        expect(intent).toHaveProperty('options');
-      } else {
-        // If ambiguous intent not implemented yet, it should at least not be unknown
-        expect(intent.kind).not.toBe('unknown');
-      }
+      expect(intent).toEqual({
+        kind: 'ambiguous',
+        base: { kind: 'sale' },
+        options: [
+          { cents: 20000, quantity: 2 },
+          { cents: 220000 }
+        ]
+      });
+    });
+
+    it('bug 2b: handles ambiguous "spent 2 200"', () => {
+      const intent = readIntent('spent 2 200', currency);
+      expect(intent).toEqual({
+        kind: 'ambiguous',
+        base: { kind: 'expense' },
+        options: [
+          { cents: 20000, quantity: 2 },
+          { cents: 220000 }
+        ]
+      });
     });
 
     it('bug 3: returns customer name as typed "Mai Rudo" not lowercased', () => {

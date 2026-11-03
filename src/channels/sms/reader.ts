@@ -173,6 +173,25 @@ function trySale(text: string, currency: Currency): SaleIntent | AmbiguousIntent
   if (w[0] === 'sold' && w.length >= 3) {
     const potentialQty = parseInt(w[1], 10);
     if (!isNaN(potentialQty) && potentialQty > 0) {
+      // Check if the rest could be ambiguous when interpreted as a standalone amount
+      // For "sold 2 200", check if "2 200" is ambiguous
+      if (w.length === 3) {
+        const wholeAmountText = wPreserve.slice(1).join(' ');
+        const result = parseAmount(wholeAmountText, currency);
+        if (result.type === 'ambiguous') {
+          // This is genuinely ambiguous - could be qty+amount or a single amount
+          // parseAmount returns [qty*amount, single_amount], so add qty info to first option
+          return {
+            kind: 'ambiguous',
+            options: [
+              { cents: result.possibleAmounts[0].cents, quantity: potentialQty },  // qty items for total amount
+              { cents: result.possibleAmounts[1].cents }  // single amount
+            ],
+            base: { kind: 'sale' }
+          };
+        }
+      }
+
       // Words from index 2 onwards are item + amount
       // Find where the amount starts (could be any numeric-like pattern)
       for (let i = 2; i < w.length; i++) {
@@ -187,7 +206,7 @@ function trySale(text: string, currency: Currency): SaleIntent | AmbiguousIntent
             quantity: potentialQty
           };
         } else if (result.type === 'ambiguous') {
-          // Ambiguous amount - return as ambiguous intent
+          // Ambiguous amount with item - return as ambiguous intent
           return {
             kind: 'ambiguous',
             options: result.possibleAmounts.map(amt => ({
@@ -279,7 +298,7 @@ function tryExpense(text: string, currency: Currency): ExpenseIntent | Ambiguous
     }
   }
 
-  // Pattern 8: "spent 120 transport" or "spent 1 200 stock"
+  // Pattern 8: "spent 120 transport" or "spent 1 200 stock" or "spent 2 200"
   if ((w[0] === 'spent' || w[0] === 'spend') && w.length >= 2) {
     // Try from index 1 onwards, starting with longer sequences
     for (let i = w.length - 1; i >= 1; i--) {
@@ -293,8 +312,11 @@ function tryExpense(text: string, currency: Currency): ExpenseIntent | Ambiguous
           item: itemPart || undefined
         };
       } else if (result.type === 'ambiguous') {
-        // For ambiguous amounts with an item, take the first (longer) interpretation
-        if (i + 1 < w.length) {
+        // Check if there's an item part
+        const hasItem = i + 1 < w.length;
+        
+        if (hasItem) {
+          // For ambiguous amounts with an item, take the first (longer) interpretation
           const itemPart = w.slice(i + 1).join(' ');
           return {
             kind: 'expense',
@@ -303,9 +325,24 @@ function tryExpense(text: string, currency: Currency): ExpenseIntent | Ambiguous
           };
         } else {
           // No item, so it's ambiguous
+          // Check if we can extract quantity from the amount string for annotation
+          const amountWords = amountText.split(/\s+/);
+          if (amountWords.length >= 2 && /^\d+$/.test(amountWords[0])) {
+            const potentialQty = parseInt(amountWords[0], 10);
+            if (potentialQty >= 2) {
+              return {
+                kind: 'ambiguous',
+                options: [
+                  { cents: result.possibleAmounts[0].cents, quantity: potentialQty },
+                  { cents: result.possibleAmounts[1].cents }
+                ],
+                base: { kind: 'expense' }
+              };
+            }
+          }
           return {
             kind: 'ambiguous',
-            options: result.possibleAmounts,
+            options: result.possibleAmounts.map(amt => ({ cents: amt.cents })),
             base: { kind: 'expense' }
           };
         }

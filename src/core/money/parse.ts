@@ -69,8 +69,8 @@ export function parseAmount(input: string, currency: Currency): ParseResult {
     return {
       type: 'ambiguous',
       possibleAmounts: result.cents.map(c => ({
-        cents: c,
-        requiresConfirmation: c > CONFIRMATION_THRESHOLD_CENTS
+        cents: c * 100,
+        requiresConfirmation: c * 100 > CONFIRMATION_THRESHOLD_CENTS
       }))
     };
   }
@@ -142,13 +142,15 @@ function parseAmountString(input: string): AmountStringResult {
     const secondPart = parseInt(potentialAmbiguousMatch[2], 10);
     
     // If first part is 1, treat as thousands separator (1,200 = 1200 Rands = 120000 cents)
-    // If first part >= 2, it's ambiguous (2 items at 200 each = 400, or 2,200 = 2200)
+    // If first part >= 2, it's ambiguous:
+    //   - 200 Rands (quantity 2, total amount 200)
+    //   - 2,200 Rands (single amount)
     if (firstPart >= 2) {
       return {
         type: 'ambiguous',
         cents: [
-          firstPart * 1000 + secondPart,  // one sale of X,200
-          firstPart * secondPart          // firstPart items at secondPart each
+          secondPart,                     // quantity items for secondPart Rands total
+          firstPart * 1000 + secondPart   // single amount X,200 Rands
         ]
       };
     }
