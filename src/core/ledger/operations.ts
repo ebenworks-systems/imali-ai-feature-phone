@@ -19,6 +19,7 @@ import {
   createPaymentRecord,
   createReversal
 } from '../records/types.js';
+import { activeRecords } from '../records/active.js';
 
 // Result types for operations
 
@@ -258,27 +259,14 @@ export async function undoLastRecord(
   // Get all records for this shop
   const allRecords = await store.listRecords(shop.id);
 
-  // Find the most recent reversible record
-  // A record is reversible if: it's not a reversal and it's not already reversed
+  // Filter to only active (non-reversed) records
+  const { active: activeList } = activeRecords(allRecords);
+
+  // Find the most recent reversible record (iterate from newest to oldest)
   let recordToReverse: Record | null = null;
 
-  // Iterate from newest to oldest
-  for (let i = allRecords.length - 1; i >= 0; i--) {
-    const record = allRecords[i];
-
-    // Skip reversals
-    if (record.kind === 'reversal') {
-      continue;
-    }
-
-    // Check if this record is already reversed
-    const existingReversal = await store.findReversalOf(record.id);
-    if (existingReversal) {
-      continue;
-    }
-
-    // Found the record to reverse
-    recordToReverse = record;
+  for (let i = activeList.length - 1; i >= 0; i--) {
+    recordToReverse = activeList[i];
     break;
   }
 
@@ -345,7 +333,7 @@ export async function undoLastRecord(
              recordToReverse.kind === 'sale' ? 'salesToday' : 'expensesToday',
       cents: recordToReverse.amount,
       customer: recordToReverse.kind === 'debt' || recordToReverse.kind === 'payment' 
-        ? (recordToReverse as any).customerDisplayName 
+        ? recordToReverse.customerDisplayName
         : undefined
     }
   };

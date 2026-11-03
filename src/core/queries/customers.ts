@@ -2,11 +2,43 @@
 
 import type { LedgerStore } from '../../store/interface.js';
 import type { Shop } from '../shops/types.js';
+import type { Record } from '../records/types.js';
 import { customerKey } from '../records/types.js';
+import { activeRecords } from '../records/active.js';
 
 export interface CustomerBalance {
   displayName: string; // Original display name
   balance: number; // cents (positive = owes, negative = credit)
+}
+
+/**
+ * Computes all customer balances from a list of active records
+ * Returns a map from customer key to { displayName, balance }
+ * Used internally by both getWhoOwes and getCustomerBalance
+ */
+function computeCustomerBalances(
+  activeList: Record[]
+): Map<string, { displayName: string; balance: number }> {
+  const customers = new Map<string, { displayName: string; balance: number }>();
+
+  for (const record of activeList) {
+    // Only track debt and payment records
+    if (record.kind === 'debt' || record.kind === 'payment') {
+      const key = record.customerKey;
+      const displayName = record.customerDisplayName;
+      const current = customers.get(key) || { displayName, balance: 0 };
+
+      if (record.kind === 'debt') {
+        current.balance += record.amount;
+      } else if (record.kind === 'payment') {
+        current.balance -= record.amount;
+      }
+
+      customers.set(key, current);
+    }
+  }
+
+  return customers;
 }
 
 /**
@@ -20,58 +52,11 @@ export async function getWhoOwes(
 ): Promise<CustomerBalance[]> {
   const allRecords = await store.listRecords(shop.id);
 
-  // Map from customer key to { displayName, balance }
-  const customers = new Map<string, { displayName: string; balance: number }>();
+  // Filter to only active (non-reversed) records
+  const { active: activeList } = activeRecords(allRecords);
 
-  for (const record of allRecords) {
-    // Check if this record is reversed
-    const reversal = await store.findReversalOf(record.id);
-    if (reversal) {
-      continue;
-    }
-
-    // Check if this is a reversal record
-    if (record.kind === 'reversal') {
-      // Check if this reversal is itself reversed
-      const reversalOfReversal = await store.findReversalOf(record.id);
-      if (reversalOfReversal) {
-        // This reversal is itself reversed, so treat the original record as active again
-        const reversedRecord = await store.findRecordById(record.reversesRecordId);
-        if (!reversedRecord || (reversedRecord.kind !== 'debt' && reversedRecord.kind !== 'payment')) {
-          continue;
-        }
-
-        const key = (reversedRecord as any).customerKey;
-        const displayName = (reversedRecord as any).customerDisplayName;
-        const current = customers.get(key) || { displayName, balance: 0 };
-
-        if (reversedRecord.kind === 'debt') {
-          current.balance += reversedRecord.amount;
-        } else if (reversedRecord.kind === 'payment') {
-          current.balance -= reversedRecord.amount;
-        }
-
-        customers.set(key, current);
-      }
-      // If the reversal is not itself reversed, it cancels the original record, so skip
-      continue;
-    }
-
-    // Only track debt and payment records
-    if (record.kind === 'debt' || record.kind === 'payment') {
-      const key = (record as any).customerKey;
-      const displayName = (record as any).customerDisplayName;
-      const current = customers.get(key) || { displayName, balance: 0 };
-
-      if (record.kind === 'debt') {
-        current.balance += record.amount;
-      } else if (record.kind === 'payment') {
-        current.balance -= record.amount;
-      }
-
-      customers.set(key, current);
-    }
-  }
+  // Compute customer balances from active records
+  const customers = computeCustomerBalances(activeList);
 
   // Filter to only customers with positive balances and sort by balance descending
   const result: CustomerBalance[] = [];
@@ -98,55 +83,13 @@ export async function getCustomerBalance(
   const key = customerKey(customerName);
   const allRecords = await store.listRecords(shop.id);
 
-  let balance = 0;
+  // Filter to only active (non-reversed) records
+  const { active: activeList } = activeRecords(allRecords);
 
-  for (const record of allRecords) {
-    // Check if this record is reversed
-    const reversal = await store.findReversalOf(record.id);
-    if (reversal) {
-      continue;
-    }
+  // Compute customer balances from active records
+  const customers = computeCustomerBalances(activeList);
 
-    // Check if this is a reversal record
-    if (record.kind === 'reversal') {
-      // Check if this reversal is itself reversed
-      const reversalOfReversal = await store.findReversalOf(record.id);
-      if (reversalOfReversal) {
-        // This reversal is itself reversed, so treat the original record as active again
-        const reversedRecord = await store.findRecordById(record.reversesRecordId);
-        if (!reversedRecord) {
-          continue;
-        }
-
-        if (reversedRecord.kind === 'debt') {
-          const recordKey = (reversedRecord as any).customerKey;
-          if (recordKey === key) {
-            balance += reversedRecord.amount;
-          }
-        } else if (reversedRecord.kind === 'payment') {
-          const recordKey = (reversedRecord as any).customerKey;
-          if (recordKey === key) {
-            balance -= reversedRecord.amount;
-          }
-        }
-      }
-      // If the reversal is not itself reversed, it cancels the original record, so skip
-      continue;
-    }
-
-    // Only track debt and payment records for this customer
-    if (record.kind === 'debt') {
-      const recordKey = (record as any).customerKey;
-      if (recordKey === key) {
-        balance += record.amount;
-      }
-    } else if (record.kind === 'payment') {
-      const recordKey = (record as any).customerKey;
-      if (recordKey === key) {
-        balance -= record.amount;
-      }
-    }
-  }
-
-  return balance;
+  // Return balance for this customer, or 0 if not found
+  const customer = customers.get(key);
+  return customer?.balance ?? 0;
 }
