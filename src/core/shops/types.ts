@@ -1,5 +1,6 @@
 // Shop type and validation for the ledger
 
+import { randomUUID } from 'node:crypto';
 import type { Currency } from '../money/currency.js';
 
 export interface Shop {
@@ -35,7 +36,6 @@ export function validateShopName(name: string): boolean {
  * Generates a unique shop ID
  */
 function generateShopId(): string {
-  // Use a simple format: shop_<random base36>
-  const random = Math.random().toString(36).substring(2, 15);
-  return `shop_${random}`;
+  // A random UUID, so two serverless instances can never make the same id.
+  return `shop_${randomUUID()}`;
 }

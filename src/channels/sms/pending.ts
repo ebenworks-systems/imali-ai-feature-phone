@@ -15,14 +15,19 @@ import type { Intent } from './reader.js';
 export const PENDING_TTL_MS = 10 * 60 * 1000;
 
 export interface PendingQuestion {
-  /** 'ambiguous': the amount could mean two things. 'largeAmount': the amount is over 1,000,000.00. */
-  kind: 'ambiguous' | 'largeAmount';
+  /**
+   * 'ambiguous': the amount could mean two things. 'largeAmount': the amount is over 1,000,000.00.
+   * 'signup': the phone is new, the welcome was sent, and the next message is the shop name.
+   */
+  kind: 'ambiguous' | 'largeAmount' | 'signup';
   /** The action to carry out once the owner answers. */
   intent?: Intent;
   /** For 'ambiguous': the amounts the owner can pick, in the order they were offered (answer "1", "2"). */
   possibleAmounts?: Array<{ cents: number; formatted: string }>;
   /** For 'largeAmount': the amount in cents waiting for a "yes". */
   largeAmount?: number;
+  /** The owner's own words that started the question, kept so the saved record carries them, not "1" or "yes". */
+  originalWords?: string;
   /** When the question was asked, as supplied by the caller. Expiry does not depend on this field. */
   createdAt: Date;
 }

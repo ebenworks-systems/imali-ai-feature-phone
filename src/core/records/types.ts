@@ -1,5 +1,7 @@
 // Record types and factories for the ledger
 
+import { randomUUID } from 'node:crypto';
+
 export type RecordKind = 'sale' | 'expense' | 'debt' | 'payment' | 'reversal';
 export type Channel = 'ussd' | 'sms' | 'web';
 
@@ -202,8 +204,6 @@ export function createReversal(
  * Generates a unique record ID
  */
 function generateRecordId(): string {
-  // Use a simple format: rec_<random base36>_<timestamp>
-  const random = Math.random().toString(36).substring(2, 10);
-  const timestamp = Date.now().toString(36);
-  return `rec_${random}_${timestamp}`;
+  // A random UUID, so two serverless instances can never make the same id.
+  return `rec_${randomUUID()}`;
 }

@@ -198,7 +198,7 @@ const PUNCTUATION_MAP: Array<[RegExp, string]> = [
  * Make text the owner typed (a name or an item) safe to send: plain ASCII, one line, single spaces.
  * Curly quotes and long dashes become straight ones, accents are dropped (e -> e), anything else becomes "?".
  */
-function ascii(input: string): string {
+export function ascii(input: string): string {
   let out = input;
   for (const [pattern, replacement] of PUNCTUATION_MAP) {
     out = out.replace(pattern, replacement);
