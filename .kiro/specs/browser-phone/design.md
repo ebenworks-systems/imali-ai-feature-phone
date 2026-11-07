@@ -139,7 +139,12 @@ that the film-grain image has none to hold.
   --highlight:    rgba(255, 255, 255, 0.7);  /* soft inset highlight */
   --pill-tint:    #EEF1E6;                   /* eyebrow pill fill */
   --on-ink:       var(--paper);
-  --on-ink-tint:  rgba(251, 248, 241, 0.16); /* arrow circle on the primary button */
+
+  /* Primary button: a mid-tone sage fill, lighter than --call (L 0.354 against 0.226). Light theme: no dark fill. */
+  --primary-fill:  #8FA87F;                  /* ink label on it 5.94:1 (needs 4.5); fill on paper 2.45:1, on core 2.56:1 */
+  --on-primary:    var(--ink);               /* label and arrow */
+  --on-primary-tint: rgba(251, 248, 241, 0.55); /* arrow circle: paper at 55% over the fill = #CAD4BE; circle on fill 1.69:1,
+                                                   ink arrow on circle 10.06:1 (needs 3); the circle has no ring of its own */
 
   /* Phone */
   --lcd-bg:       #C9D4B0;
@@ -223,7 +228,12 @@ that the film-grain image has none to hold.
 | sage-deep on pill-tint | 6.08 | eyebrow text |
 | clay on paper | 4.70 | counter near limit |
 | clay on core | 4.91 | undone label, errors in the card |
-| paper on ink | 14.56 | primary button |
+| paper on ink | 14.56 | skip link (shown only on focus) |
+| ink on primary-fill | 5.94 | primary button label, needs 4.5 |
+| ink arrow on on-primary-tint circle (`#CAD4BE`) | 10.06 | primary button arrow, needs 3 |
+| on-primary-tint circle on primary-fill | 1.69 | the circle's own edge; the arrow is what carries meaning |
+| primary-fill on paper | 2.45 | button edge; the label and the arrow name the control |
+| focus ring (sage-deep) on primary-fill | 2.67 | the ring is drawn 2 px outside the button, on paper (6.56) |
 | lcd-ink on lcd-bg | 9.63 | LCD text |
 | lcd-ink-soft on lcd-bg | 5.49 | LCD hints |
 | ink on body-bottom | 10.41 | any text printed on the body |
@@ -717,10 +727,10 @@ While a shop does not exist, "Start demo shop" is the only live button. Once one
                  padding: 0 var(--space-6); border-radius: var(--radius-pill); font: 500 var(--text-sm) var(--font-text);
                  transition: transform var(--dur-fast) var(--ease); }
 .btn:active    { transform: scale(0.98); }
-.btn--primary  { background: var(--ink); color: var(--on-ink); padding-right: var(--space-2); }
+.btn--primary  { background: var(--primary-fill); color: var(--on-primary); padding-right: var(--space-2); }
 .btn--quiet    { background: transparent; color: var(--ink); box-shadow: var(--ring); }
 .btn__arrow    { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
-                 background: var(--on-ink-tint); }
+                 background: var(--on-primary-tint); }
 .btn__arrow svg { transition: transform var(--dur) var(--ease); }
 @media (hover: hover) { .btn--primary:hover .btn__arrow svg { transform: translate(2px, -2px); } }
 .btn--primary:focus-visible .btn__arrow svg { transform: translate(2px, -2px); }

@@ -408,9 +408,10 @@ the fixed clock, and replace the two handlers with `vi.mock` so they check exact
   - Files: `.kiro/steering/tech.md`
   - Requirements: 11
 
-- [ ] 9.3 **Run the Postgres suites (done by a person with a test database).** With TEST_DATABASE_URL set to a direct
+- [x] 9.3 **Run the Postgres suites (done by a person with a test database).** With TEST_DATABASE_URL set to a direct
   (not pooled) Neon or local database the tests may use, run `npx vitest run test/store` and check that the suites are
   not skipped and pass.
+  - Run 7 Nov 2026 against a Neon test branch: 90 test files, 1,895 tests passed, none skipped.
   - Files: none
   - Requirements: 75, 76, 77
 

@@ -19,7 +19,12 @@
   --highlight:    rgba(255, 255, 255, 0.7);  /* soft inset highlight */
   --pill-tint:    #EEF1E6;                   /* eyebrow pill fill */
   --on-ink:       var(--paper);
-  --on-ink-tint:  rgba(251, 248, 241, 0.16); /* arrow circle on the primary button */
+
+  /* Primary button: a mid-tone sage fill, lighter than --call (L 0.354 against 0.226). Light theme: no dark fill. */
+  --primary-fill:  #8FA87F;                  /* ink label on it 5.94:1 (needs 4.5); fill on paper 2.45:1, on core 2.56:1 */
+  --on-primary:    var(--ink);               /* label and arrow */
+  --on-primary-tint: rgba(251, 248, 241, 0.55); /* arrow circle: paper at 55% over the fill = #CAD4BE; circle on fill 1.69:1,
+                                                   ink arrow on circle 10.06:1 (needs 3); the circle has no ring of its own */
 
   /* Phone */
   --lcd-bg:       #C9D4B0;
@@ -361,8 +366,8 @@ kbd { white-space: nowrap; }
 .btn:active { transform: scale(0.98); }
 
 .btn--primary {
-  background: var(--ink);
-  color: var(--on-ink);
+  background: var(--primary-fill);
+  color: var(--on-primary);
   padding-right: var(--space-2);
   box-shadow: var(--shadow-key);
 }
@@ -378,7 +383,7 @@ kbd { white-space: nowrap; }
   place-items: center;
   width: 30px; height: 30px;
   border-radius: 50%;
-  background: var(--on-ink-tint);
+  background: var(--on-primary-tint);
 }
 .btn__arrow svg { transition: transform var(--dur) var(--ease); }
 @media (hover: hover) {

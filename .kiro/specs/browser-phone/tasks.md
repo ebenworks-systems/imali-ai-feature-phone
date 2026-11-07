@@ -352,3 +352,29 @@ again.") and the `length` field of the ussd and sms answers (the counter never s
   - Requirements: 102 to 106
   - Route contract, ledger answer, Row, copy, states, tests and judges outline updated to match tasks 56 to 60.
 
+## Keeping `public/` to the page, and the light theme
+
+- [x] 62. **Remove the stale test copies from `public/`; guard the folder**
+  - Files: `public/api.test.ts`, `public/ledger-logic.test.ts`, `public/phone-logic/` (four `.test.ts` files, folder
+    removed), `test/public/served-files.test.ts`
+  - Requirements: 1, 93
+  - The real tests live in `test/public/` (older copies sat beside the page files, and three of them had fallen behind
+    the real ones). Vitest runs only `test/**`, and `public/` is the folder Vercel serves, so the copies would have
+    been published at the live address. They are deleted; `public/phone-logic.js` and every other page file stay. The new
+    test lists everything under `public/` and fails on any `*.test.ts`, `*.spec.ts` (and `.js` or `.tsx` forms) or
+    `*.map` file, on any file or folder outside the page's own list (`api.js`, `index.html`, `ledger-logic.js`,
+    `ledger.js`, `phone-logic.js`, `phone.js`, `styles.css`), and on a page file that `index.html` or an `import`
+    names but the folder does not hold.
+
+- [x] 63. **Primary button: a mid-tone sage fill instead of near-black**
+  - Files: `public/styles.css`, `.kiro/specs/browser-phone/design.md`
+  - Requirements: 12, 17, 18
+  - The design rule is a light theme with no dark filled area of any size. `.btn--primary` ("Start demo shop" under
+    the phone and in the ledger card) was filled with `--ink` (#2A2320). It now uses new tokens `--primary-fill`
+    (#8FA87F, lighter than `--call` #6E8B5E), `--on-primary` (`--ink`) and `--on-primary-tint` (the arrow circle,
+    paper at 55 percent). Measured: label ink on fill 5.94:1 (needs 4.5), ink arrow on its circle 10.06:1 (needs 3), circle
+    on fill 1.69:1, fill on paper 2.45:1. The ratios sit beside the tokens in `styles.css`, and the token block and
+    contrast table in `design.md` match. `--on-ink-tint` is removed (nothing else used it). Hover (arrow nudge),
+    `:focus-visible` ring (`--focus`), `aria-disabled` (opacity 0.45) and `aria-busy` are unchanged. The phone body,
+    keys, LCD and every other colour are unchanged. The skip link still uses `--ink` and `--on-ink`; it is hidden
+    until it gets keyboard focus, and it was outside this change.
