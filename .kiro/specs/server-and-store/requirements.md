@@ -399,3 +399,15 @@ routes** are `POST /ussd` and `POST /sms`.
     parameter (`-c search_path=<schema>`), and right after connecting shall read `show search_path` and throw a clear
     error, before any migration or test runs, unless the answer is exactly that schema, so a pooled URL or a proxy
     that drops the option can never make a suite write into `public`. The production store keeps using `public`.
+
+98. A contract test shall build the real app (`createApp` with the memory stores, no mocked handlers), make a demo
+    shop through `POST /api/phone/demo`, send a sale through `POST /api/phone/ussd` and a debt through
+    `POST /api/phone/sms`, and pass the real JSON answers of `GET /api/ledger`, `POST /api/phone/ussd` and
+    `POST /api/phone/sms` through the browser page's own readers (`readLedger`, `parseUssdReply`, `parseSmsReply` in
+    `public/`). The test shall fail when the page reads a field the server does not send. It lives in
+    `test/integration/page-contract.test.ts` (the browser-phone spec, requirement 106).
+
+99. The Postgres test helper shall give every test inside `describePostgres` a timeout of 30 seconds and its
+    `beforeAll` and `afterAll` hooks 60 seconds, so that a test against a remote database (one took 5.6 s against
+    vitest's default of 5 s) does not time out, and the tests themselves shall carry no timeout.
+

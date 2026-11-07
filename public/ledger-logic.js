@@ -116,6 +116,8 @@ const isCents = (value) => typeof value === 'number' && Number.isSafeInteger(val
 const isText = (value) => typeof value === 'string';
 const isOptionalText = (value) => value === undefined || value === null || typeof value === 'string';
 const isId = (value) => (isText(value) && value !== '') || (isCents(value) && value >= 0);
+/** The server writes money as `{ cents, text }`. Only `cents` is read; the page writes its own text. */
+const isMoney = (value) => isObject(value) && isCents(value.cents);
 
 function validTimeZone(value) {
   try {
@@ -127,27 +129,42 @@ function validTimeZone(value) {
 }
 
 /**
- * Checks and normalises the answer of GET /api/ledger.
+ * Checks and normalises the answer of GET /api/ledger (the LedgerView in src/server/views.ts):
+ *
+ *   shop     { name, phone, currency, timeZone }
+ *   today    { date, sales: { total, count }, expenses, moneyInHand, newDebts, paymentsReceived, totalOwed }
+ *   owes     { customers: [{ name, owed }], more }
+ *   records  [{ id, kind, amount, item?, customer?, channel, originalWords, createdAt, reversed, reversesRecordId? }]
+ *
+ * Every money value there is `{ cents, text }`. The page keeps the cents and drops `text`.
+ *
+ * It returns the page's own shape, with plain whole-cent numbers:
+ *   shop     { name, currency, timeZone }
+ *   today    { sales, salesCount, spent, inHand }
+ *   whoOwes  [{ name, owed }], owesMore (customers the server left out)
+ *   records  [{ id, kind, amount, createdAt, channel, item, customer, reversed, reversesRecordId }]
+ *
  * @returns {{ ok: true, ledger: object } | { ok: false }}
  */
 export function readLedger(json) {
   const bad = { ok: false };
   if (!isObject(json)) return bad;
-  const { shop, today, whoOwes, records } = json;
+  const { shop, today, owes, records } = json;
 
   if (!isObject(shop) || !isText(shop.name) || !Object.hasOwn(CURRENCY_SYMBOLS, shop.currency)) return bad;
   if (shop.timeZone !== undefined && shop.timeZone !== null && !isText(shop.timeZone)) return bad;
 
-  if (!isObject(today)) return bad;
-  if (![today.sales, today.salesCount, today.spent, today.inHand].every(isCents)) return bad;
-  if (today.salesCount < 0) return bad;
+  if (!isObject(today) || !isObject(today.sales)) return bad;
+  if (!isMoney(today.sales.total) || !isCents(today.sales.count) || today.sales.count < 0) return bad;
+  if (!isMoney(today.expenses) || !isMoney(today.moneyInHand)) return bad;
 
-  if (!Array.isArray(whoOwes) || !Array.isArray(records)) return bad;
+  if (!isObject(owes) || !Array.isArray(owes.customers) || !isCents(owes.more) || owes.more < 0) return bad;
+  if (!Array.isArray(records)) return bad;
 
-  const owes = [];
-  for (const entry of whoOwes) {
-    if (!isObject(entry) || !isText(entry.name) || !isCents(entry.owed)) return bad;
-    owes.push({ name: entry.name, owed: entry.owed });
+  const whoOwes = [];
+  for (const entry of owes.customers) {
+    if (!isObject(entry) || !isText(entry.name) || !isMoney(entry.owed)) return bad;
+    whoOwes.push({ name: entry.name, owed: entry.owed.cents });
   }
 
   const rows = [];
@@ -155,20 +172,22 @@ export function readLedger(json) {
     if (!isObject(record)) return bad;
     if (!isId(record.id)) return bad;
     if (!RECORD_KINDS.includes(record.kind) || !CHANNELS.includes(record.channel)) return bad;
-    if (!isCents(record.amount) || record.amount < 0) return bad;
+    if (!isMoney(record.amount) || record.amount.cents < 0) return bad;
     if (!isText(record.createdAt) || !Number.isFinite(Date.parse(record.createdAt))) return bad;
-    if (!isOptionalText(record.item) || !isOptionalText(record.customerDisplayName)) return bad;
+    if (typeof record.reversed !== 'boolean') return bad;
+    if (!isOptionalText(record.item) || !isOptionalText(record.customer)) return bad;
     if (record.reversesRecordId !== undefined && record.reversesRecordId !== null && !isId(record.reversesRecordId)) {
       return bad;
     }
     rows.push({
       id: String(record.id),
       kind: record.kind,
-      amount: record.amount,
+      amount: record.amount.cents,
       createdAt: record.createdAt,
       channel: record.channel,
       item: record.item ?? '',
-      customerDisplayName: record.customerDisplayName ?? '',
+      customer: record.customer ?? '',
+      reversed: record.reversed,
       reversesRecordId:
         record.reversesRecordId === undefined || record.reversesRecordId === null ? '' : String(record.reversesRecordId),
     });
@@ -179,8 +198,14 @@ export function readLedger(json) {
     ok: true,
     ledger: {
       shop: { name: shop.name, currency: shop.currency, timeZone },
-      today: { sales: today.sales, salesCount: today.salesCount, spent: today.spent, inHand: today.inHand },
-      whoOwes: owes,
+      today: {
+        sales: today.sales.total.cents,
+        salesCount: today.sales.count,
+        spent: today.expenses.cents,
+        inHand: today.moneyInHand.cents,
+      },
+      whoOwes,
+      owesMore: owes.more,
       records: rows,
     },
   };
@@ -210,26 +235,27 @@ export function splitOwes(list, shown = 6) {
 }
 
 function detailOf(record) {
-  const parts = [record.customerDisplayName, record.item].filter((part) => typeof part === 'string' && part !== '');
+  const parts = [record.customer, record.item].filter((part) => typeof part === 'string' && part !== '');
   return parts.join(' - ');
+}
+
+/** 'Owes R20 Tendai (sugar)', 'Sale R45 bread': the words an Undo row uses for the record it cancels. */
+function describeRecord(record, currency) {
+  let text = `${KIND_WORDS[record.kind]} ${formatMoney(record.amount, currency)}`;
+  if (record.customer) text += ` ${record.customer}`;
+  if (record.item) text += record.customer ? ` (${record.item})` : ` ${record.item}`;
+  return text;
 }
 
 /**
  * Rows for the "Last records" list, newest first.
+ * A record is `undone` when the server says it was reversed. An Undo row carries `undoText`, a whole sentence such as
+ * 'Undo: cancelled Owes R20 Tendai (sugar)', and has no amount of its own.
  * @returns {Array<{ id: string, kindWord: string, amountText: string, detail: string, channelWord: string,
- *   timeText: string, undone: boolean, isReversal: boolean, cancelsText: string }>}
+ *   timeText: string, undone: boolean, isReversal: boolean, undoText: string }>}
  */
 export function recordRows(records, currency, timeZone = DEFAULT_TIME_ZONE, nowMs = 0) {
   const byId = new Map(records.map((record) => [String(record.id), record]));
-  const reversed = new Set();
-  for (const record of records) {
-    if (record.kind === 'reversal' && record.reversesRecordId) reversed.add(String(record.reversesRecordId));
-  }
-
-  const describe = (record) => {
-    const detail = detailOf(record);
-    return `${KIND_WORDS[record.kind]} ${formatMoney(record.amount, currency)}${detail ? ` ${detail}` : ''}`;
-  };
 
   return records
     .map((record, index) => ({ record, index, ms: Date.parse(record.createdAt) }))
@@ -242,10 +268,10 @@ export function recordRows(records, currency, timeZone = DEFAULT_TIME_ZONE, nowM
     })
     .map(({ record }) => {
       const isReversal = record.kind === 'reversal';
-      let cancelsText = '';
+      let undoText = '';
       if (isReversal) {
         const target = byId.get(String(record.reversesRecordId));
-        cancelsText = target ? `cancels ${describe(target)}` : 'cancels an earlier record';
+        undoText = `Undo: cancelled ${target ? describeRecord(target, currency) : 'an earlier record'}`;
       }
       return {
         id: String(record.id),
@@ -254,9 +280,9 @@ export function recordRows(records, currency, timeZone = DEFAULT_TIME_ZONE, nowM
         detail: detailOf(record),
         channelWord: CHANNEL_WORDS[record.channel],
         timeText: formatRecordTime(record.createdAt, timeZone, nowMs),
-        undone: !isReversal && reversed.has(String(record.id)),
+        undone: !isReversal && record.reversed === true,
         isReversal,
-        cancelsText,
+        undoText,
       };
     });
 }

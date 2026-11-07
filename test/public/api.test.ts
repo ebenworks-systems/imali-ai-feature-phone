@@ -35,10 +35,10 @@ describe('api helper', () => {
   });
 
   it('postJson sends JSON, omits credentials and returns the parsed answer', async () => {
-    const { fetchFn, calls } = fakeFetch(async () => jsonResponse({ response: 'CON Hi', chars: 2, limit: 182 }));
+    const { fetchFn, calls } = fakeFetch(async () => jsonResponse({ response: 'CON Hi', length: 2, limit: 182 }));
     const api = createApi({ fetchFn });
     const answer = await api.postJson('/api/phone/ussd', { phone: '+27000000001', sessionId: 'a', text: '' });
-    expect(answer).toEqual({ response: 'CON Hi', chars: 2, limit: 182 });
+    expect(answer).toEqual({ response: 'CON Hi', length: 2, limit: 182 });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe('/api/phone/ussd');
     expect(calls[0].init.method).toBe('POST');

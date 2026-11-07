@@ -65,6 +65,7 @@ export function initLedger({ root, api, storage, random, onShop, onData = () => 
     owesList: $('owes-list'),
     owesEmpty: $('owes-empty'),
     owesMore: $('owes-more'),
+    owesExtra: $('owes-extra'),
     recordsList: $('records-list'),
     recordsEmpty: $('records-empty'),
     panelError: $('panel-error'),
@@ -162,6 +163,9 @@ export function initLedger({ root, api, storage, random, onShop, onData = () => 
     els.owesMore.hidden = hidden.length === 0;
     els.owesMore.textContent = `Show all ${sorted.length}`;
     els.owesMore.setAttribute('aria-expanded', String(expanded));
+    // The server sends at most 20 names. Say so when it left some out, so the list is never mistaken for all of them.
+    els.owesExtra.hidden = ledger.owesMore === 0;
+    els.owesExtra.textContent = ledger.owesMore === 1 ? '1 more person owes money.' : `${ledger.owesMore} more people owe money.`;
   }
 
   function drawRecords(ledger) {
@@ -169,13 +173,21 @@ export function initLedger({ root, api, storage, random, onShop, onData = () => 
     els.recordsList.replaceChildren(
       ...rows.map((row) => {
         const item = el('li', 'rec');
+        if (row.isReversal) {
+          // An Undo row is one plain sentence ("Undo: cancelled Owes R20 Tendai (sugar)"), then the time and channel.
+          item.classList.add('rec--reversal');
+          item.append(
+            el('span', 'rec-note', row.undoText),
+            el('span', 'rec-time', row.timeText),
+            el('span', 'rec-chan', row.channelWord),
+          );
+          return item;
+        }
         if (row.undone) item.classList.add('rec--undone');
-        if (row.isReversal) item.classList.add('rec--reversal');
         const note = el('span', 'rec-note');
-        const noteText = row.isReversal ? row.cancelsText : row.detail;
-        if (noteText) note.append(el('span', 'rec-detail', noteText));
+        if (row.detail) note.append(el('span', 'rec-detail', row.detail));
         if (row.undone) {
-          if (noteText) note.append(' ');
+          if (row.detail) note.append(' ');
           note.append(el('span', 'rec-flag', 'undone'));
         }
         item.append(

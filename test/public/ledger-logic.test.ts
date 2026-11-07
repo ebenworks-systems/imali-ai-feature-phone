@@ -152,45 +152,83 @@ describe('formatRecordTime', () => {
   });
 });
 
+/** The server writes money as { cents, text }. The text here is wrong on purpose: the page must not use it. */
+const money = (cents: number) => ({ cents, text: 'NOT-USED' });
+
+/** An answer shaped as the LedgerView in src/server/views.ts. */
 function sampleAnswer() {
   return {
-    shop: { name: 'Mama Thandi Corner Shop', currency: 'ZAR', timeZone: 'Africa/Johannesburg' },
-    today: { sales: 124000, salesCount: 12, spent: 30000, inHand: 94000 },
-    whoOwes: [
-      { name: 'Tendai', owed: 5000 },
-      { name: 'Lerato', owed: 2000 },
-    ],
+    shop: { name: 'Mama Thandi Corner Shop', phone: '+27000001234', currency: 'ZAR', timeZone: 'Africa/Johannesburg' },
+    today: {
+      date: '2026-11-07',
+      sales: { total: money(124000), count: 12 },
+      expenses: money(30000),
+      moneyInHand: money(94000),
+      newDebts: money(2000),
+      paymentsReceived: money(0),
+      totalOwed: money(7000),
+    },
+    owes: {
+      customers: [
+        { name: 'Tendai', owed: money(5000) },
+        { name: 'Lerato', owed: money(2000) },
+      ],
+      more: 0,
+    },
     records: [
-      {
-        id: 'r1',
-        kind: 'sale',
-        amount: 4500,
-        createdAt: '2026-11-07T12:05:00.000Z',
-        channel: 'ussd',
-        item: 'bread',
-      },
       {
         id: 'r2',
         kind: 'debt',
-        amount: 2000,
-        createdAt: '2026-11-07T12:07:00.000Z',
-        channel: 'sms',
+        amount: money(2000),
         item: 'sugar',
-        customerDisplayName: 'Tendai',
+        customer: 'Tendai',
+        channel: 'sms',
+        originalWords: 'Tendai owes 20 sugar',
+        createdAt: '2026-11-07T12:07:00.000Z',
+        reversed: false,
+      },
+      {
+        id: 'r1',
+        kind: 'sale',
+        amount: money(4500),
+        item: 'bread',
+        channel: 'ussd',
+        originalWords: 'sold bread 45',
+        createdAt: '2026-11-07T12:05:00.000Z',
+        reversed: false,
       },
     ],
   };
 }
 
 describe('readLedger', () => {
-  it('accepts a full answer and normalises it', () => {
+  it('reads the server answer into whole cents, plain numbers', () => {
     const result = readLedger(sampleAnswer());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.ledger.shop).toEqual({ name: 'Mama Thandi Corner Shop', currency: 'ZAR', timeZone: 'Africa/Johannesburg' });
-    expect(result.ledger.today.inHand).toBe(94000);
-    expect(result.ledger.records[1]).toMatchObject({ customerDisplayName: 'Tendai', item: 'sugar', reversesRecordId: '' });
-    expect(result.ledger.records[0].customerDisplayName).toBe('');
+    expect(result.ledger.today).toEqual({ sales: 124000, salesCount: 12, spent: 30000, inHand: 94000 });
+    expect(result.ledger.whoOwes).toEqual([
+      { name: 'Tendai', owed: 5000 },
+      { name: 'Lerato', owed: 2000 },
+    ]);
+    expect(result.ledger.owesMore).toBe(0);
+    expect(result.ledger.records[0]).toMatchObject({
+      id: 'r2',
+      kind: 'debt',
+      amount: 2000,
+      customer: 'Tendai',
+      item: 'sugar',
+      channel: 'sms',
+      reversed: false,
+      reversesRecordId: '',
+    });
+    expect(result.ledger.records[1].customer).toBe('');
+  });
+
+  it('does not carry the server text field into what it returns', () => {
+    const result = readLedger(sampleAnswer());
+    expect(JSON.stringify(result)).not.toContain('NOT-USED');
   });
 
   it('accepts a missing time zone and uses Africa/Johannesburg', () => {
@@ -207,36 +245,67 @@ describe('readLedger', () => {
     expect(result.ok && result.ledger.shop.timeZone).toBe('Africa/Johannesburg');
   });
 
-  it('accepts negative in-hand money and empty lists', () => {
+  it('accepts negative money in hand and empty lists', () => {
     const answer = sampleAnswer();
-    answer.today.inHand = -1500;
-    answer.whoOwes = [];
+    answer.today.moneyInHand = money(-1500);
+    answer.owes.customers = [];
     answer.records = [];
-    expect(readLedger(answer).ok).toBe(true);
+    const result = readLedger(answer);
+    expect(result.ok && result.ledger.today.inHand).toBe(-1500);
   });
 
-  it('accepts numeric ids and null optional fields', () => {
+  it('keeps how many customers the server left out of the list', () => {
+    const answer = sampleAnswer();
+    answer.owes.more = 3;
+    const result = readLedger(answer);
+    expect(result.ok && result.ledger.owesMore).toBe(3);
+  });
+
+  it('accepts numeric ids, null optional fields and a reversal that names the record it cancels', () => {
     const answer = sampleAnswer() as any;
     answer.records[0].id = 7;
     answer.records[0].item = null;
-    answer.records[1].reversesRecordId = null;
+    answer.records.unshift({
+      id: 'r3',
+      kind: 'reversal',
+      amount: money(2000),
+      channel: 'sms',
+      originalWords: 'undo',
+      createdAt: '2026-11-07T12:08:00.000Z',
+      reversed: false,
+      reversesRecordId: 'r2',
+    });
     const result = readLedger(answer);
-    expect(result.ok && result.ledger.records[0].id).toBe('7');
+    expect(result.ok && result.ledger.records[0].reversesRecordId).toBe('r2');
+    expect(result.ok && result.ledger.records[1].id).toBe('7');
   });
 
-  it('rejects a float cent value anywhere', () => {
+  it('rejects money that is not whole cents, anywhere', () => {
     for (const edit of [
-      (a: any) => (a.today.sales = 45.5),
-      (a: any) => (a.today.salesCount = 1.5),
-      (a: any) => (a.whoOwes[0].owed = 10.25),
-      (a: any) => (a.records[0].amount = 4500.5),
-      (a: any) => (a.today.spent = Number.MAX_SAFE_INTEGER + 2),
-      (a: any) => (a.today.inHand = '940'),
+      (a: any) => (a.today.sales.total.cents = 45.5),
+      (a: any) => (a.today.sales.count = 1.5),
+      (a: any) => (a.owes.customers[0].owed.cents = 10.25),
+      (a: any) => (a.records[0].amount.cents = 4500.5),
+      (a: any) => (a.today.expenses.cents = Number.MAX_SAFE_INTEGER + 2),
+      (a: any) => (a.today.moneyInHand = 940),
+      (a: any) => (a.today.sales.total = '940'),
+      (a: any) => (a.records[0].amount = 2000),
+      (a: any) => (a.records[0].amount.cents = -1),
     ]) {
       const answer = sampleAnswer();
       edit(answer);
       expect(readLedger(answer).ok).toBe(false);
     }
+  });
+
+  it('rejects the shapes the page used to expect', () => {
+    const old = sampleAnswer() as any;
+    old.today = { sales: 124000, salesCount: 12, spent: 30000, inHand: 94000 };
+    expect(readLedger(old).ok).toBe(false);
+    const whoOwes = sampleAnswer() as any;
+    whoOwes.whoOwes = whoOwes.owes.customers;
+    delete whoOwes.owes;
+    expect(readLedger(whoOwes).ok).toBe(false);
   });
 
   it('rejects an unknown currency', () => {
@@ -246,17 +315,24 @@ describe('readLedger', () => {
   });
 
   it('rejects a missing or wrong list', () => {
-    for (const key of ['whoOwes', 'records'] as const) {
-      const missing = sampleAnswer() as any;
-      delete missing[key];
-      expect(readLedger(missing).ok).toBe(false);
-      const notList = sampleAnswer() as any;
-      notList[key] = {};
-      expect(readLedger(notList).ok).toBe(false);
-    }
+    const noCustomers = sampleAnswer() as any;
+    delete noCustomers.owes.customers;
+    expect(readLedger(noCustomers).ok).toBe(false);
+    const owesList = sampleAnswer() as any;
+    owesList.owes = [];
+    expect(readLedger(owesList).ok).toBe(false);
+    const noMore = sampleAnswer() as any;
+    delete noMore.owes.more;
+    expect(readLedger(noMore).ok).toBe(false);
+    const noRecords = sampleAnswer() as any;
+    delete noRecords.records;
+    expect(readLedger(noRecords).ok).toBe(false);
+    const recordsObject = sampleAnswer() as any;
+    recordsObject.records = {};
+    expect(readLedger(recordsObject).ok).toBe(false);
   });
 
-  it('rejects a record with an unknown kind or channel, or a bad date', () => {
+  it('rejects a record with an unknown kind or channel, a bad date or no reversed flag', () => {
     const kind = sampleAnswer() as any;
     kind.records[0].kind = 'refund';
     expect(readLedger(kind).ok).toBe(false);
@@ -266,6 +342,9 @@ describe('readLedger', () => {
     const date = sampleAnswer() as any;
     date.records[0].createdAt = 'not a date';
     expect(readLedger(date).ok).toBe(false);
+    const flag = sampleAnswer() as any;
+    delete flag.records[0].reversed;
+    expect(readLedger(flag).ok).toBe(false);
   });
 
   it('rejects a missing part and values that are not objects', () => {
@@ -281,7 +360,7 @@ describe('readLedger', () => {
 
   it('rejects an owes entry without a name and a time zone that is not text', () => {
     const owes = sampleAnswer() as any;
-    owes.whoOwes[0].name = 5;
+    owes.owes.customers[0].name = 5;
     expect(readLedger(owes).ok).toBe(false);
     const zone = sampleAnswer() as any;
     zone.shop.timeZone = 2;
@@ -339,6 +418,7 @@ describe('recordRows', () => {
   const now = Date.parse('2026-11-07T14:00:00Z');
   const zone = 'Africa/Johannesburg';
 
+  /** A record as readLedger returns it. */
   const rec = (over: Record<string, unknown>) => ({
     id: 'x',
     kind: 'sale',
@@ -346,7 +426,8 @@ describe('recordRows', () => {
     createdAt: '2026-11-07T12:05:00.000Z',
     channel: 'ussd',
     item: '',
-    customerDisplayName: '',
+    customer: '',
+    reversed: false,
     reversesRecordId: '',
     ...over,
   });
@@ -387,7 +468,7 @@ describe('recordRows', () => {
 
   it('shows amount, detail and time', () => {
     const [row] = recordRows(
-      [rec({ kind: 'debt', amount: 2050, customerDisplayName: 'Tendai', item: 'sugar', channel: 'sms' })],
+      [rec({ kind: 'debt', amount: 2050, customer: 'Tendai', item: 'sugar', channel: 'sms' })],
       'ZAR',
       zone,
       now,
@@ -400,7 +481,7 @@ describe('recordRows', () => {
       timeText: '14:05',
       undone: false,
       isReversal: false,
-      cancelsText: '',
+      undoText: '',
     });
   });
 
@@ -408,7 +489,7 @@ describe('recordRows', () => {
     const rows = recordRows(
       [
         rec({ id: '1', item: 'bread', createdAt: '2026-11-07T10:01:00Z' }),
-        rec({ id: '2', customerDisplayName: 'Tendai', createdAt: '2026-11-07T10:02:00Z' }),
+        rec({ id: '2', customer: 'Tendai', createdAt: '2026-11-07T10:02:00Z' }),
         rec({ id: '3', createdAt: '2026-11-07T10:03:00Z' }),
       ],
       'ZAR',
@@ -418,10 +499,10 @@ describe('recordRows', () => {
     expect(rows.map((row) => row.detail)).toEqual(['', 'Tendai', 'bread']);
   });
 
-  it('marks a record undone when a reversal points at it, and describes the reversal', () => {
+  it('marks a record undone when the server says it was reversed, and writes the Undo row in plain words', () => {
     const rows = recordRows(
       [
-        rec({ id: 'r1', kind: 'sale', amount: 4500, item: 'bread', createdAt: '2026-11-07T12:05:00Z' }),
+        rec({ id: 'r1', kind: 'sale', amount: 4500, item: 'bread', reversed: true, createdAt: '2026-11-07T12:05:00Z' }),
         rec({ id: 'r2', kind: 'reversal', amount: 4500, reversesRecordId: 'r1', createdAt: '2026-11-07T12:06:00Z' }),
         rec({ id: 'r3', kind: 'sale', amount: 1000, createdAt: '2026-11-07T12:07:00Z' }),
       ],
@@ -437,20 +518,55 @@ describe('recordRows', () => {
       isReversal: true,
       amountText: '',
       undone: false,
-      cancelsText: 'cancels Sale R45 bread',
+      undoText: 'Undo: cancelled Sale R45 bread',
     });
+  });
+
+  it('names a cancelled debt with its customer and the item in brackets', () => {
+    const rows = recordRows(
+      [
+        rec({ id: 'd1', kind: 'debt', amount: 2000, customer: 'Tendai', item: 'sugar', channel: 'sms', reversed: true }),
+        rec({ id: 'u1', kind: 'reversal', amount: 2000, reversesRecordId: 'd1', channel: 'sms', createdAt: '2026-11-07T12:06:00Z' }),
+      ],
+      'ZAR',
+      zone,
+      now,
+    );
+    expect(rows[0].undoText).toBe('Undo: cancelled Owes R20 Tendai (sugar)');
+    expect(rows[1]).toMatchObject({ undone: true, detail: 'Tendai - sugar' });
+  });
+
+  it('names a cancelled payment (customer, no item) and a cancelled expense (item only) in the shop currency', () => {
+    const rows = recordRows(
+      [
+        rec({ id: 'p1', kind: 'payment', amount: 1500, customer: 'Rudo', reversed: true, createdAt: '2026-11-07T12:00:00Z' }),
+        rec({ id: 'u1', kind: 'reversal', reversesRecordId: 'p1', createdAt: '2026-11-07T12:01:00Z' }),
+        rec({ id: 'e1', kind: 'expense', amount: 125050, item: 'stock', reversed: true, createdAt: '2026-11-07T12:02:00Z' }),
+        rec({ id: 'u2', kind: 'reversal', reversesRecordId: 'e1', createdAt: '2026-11-07T12:03:00Z' }),
+      ],
+      'KES',
+      zone,
+      now,
+    );
+    expect(rows.find((row) => row.id === 'u1')?.undoText).toBe('Undo: cancelled Paid KSh15 Rudo');
+    expect(rows.find((row) => row.id === 'u2')?.undoText).toBe('Undo: cancelled Spent KSh1,250.50 stock');
   });
 
   it('says "an earlier record" when the reversal target is outside the list', () => {
     const [row] = recordRows([rec({ id: 'r9', kind: 'reversal', reversesRecordId: 'gone' })], 'ZAR', zone, now);
-    expect(row.cancelsText).toBe('cancels an earlier record');
+    expect(row.undoText).toBe('Undo: cancelled an earlier record');
     expect(row.amountText).toBe('');
+  });
+
+  it('trusts the server flag and not the list: a record is not undone just because a reversal is near it', () => {
+    const [row] = recordRows([rec({ id: 'r1' })], 'ZAR', zone, now);
+    expect(row.undone).toBe(false);
   });
 
   it('sorts an Undo before the record it cancels when both have the same time', () => {
     const rows = recordRows(
       [
-        rec({ id: 'r1', createdAt: '2026-11-07T12:05:00Z' }),
+        rec({ id: 'r1', createdAt: '2026-11-07T12:05:00Z', reversed: true }),
         rec({ id: 'r2', kind: 'reversal', reversesRecordId: 'r1', createdAt: '2026-11-07T12:05:00Z' }),
       ],
       'ZAR',
@@ -469,7 +585,7 @@ describe('recordRows', () => {
     const customer = 'Nomvula Mkhwanazi-Du'; // 20 characters
     expect(customer).toHaveLength(20);
     const [row] = recordRows(
-      [rec({ kind: 'debt', amount: 99999999, customerDisplayName: customer, item: 'maize meal 12.5kg' })],
+      [rec({ kind: 'debt', amount: 99999999, customer, item: 'maize meal 12.5kg' })],
       'ZAR',
       zone,
       now,

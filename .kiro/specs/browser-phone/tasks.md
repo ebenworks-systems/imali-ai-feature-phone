@@ -300,3 +300,55 @@ tests first, then markup and CSS, then the two DOM files, then docs and checks. 
   - Files: `public/ledger-logic.js`, `test/public/ledger-logic.test.ts`
   - Requirements: 94, 101
   - `formatMoney` wrote `R-60`; the core writes `-R60`. The sign now goes before the symbol. The old test that expected `R-45.50` is changed, a test checks every currency, and the fast-check comparison with `formatCents` passes again.
+
+## Matching the server (first run of the page against the real server)
+
+The page and the server were built from two specs in parallel. Run together, the menu, the text messages and the
+export worked, but two answers did not match: `GET /api/ledger` (the ledger card always said "Could not refresh. Try
+again.") and the `length` field of the ussd and sms answers (the counter never showed).
+
+- [x] 56. **Read the server's ledger answer**
+  - Files: `public/ledger-logic.js`, `public/ledger.js`, `public/index.html`, `test/public/ledger-logic.test.ts`
+  - Requirements: 69, 70, 77, 103
+  - `readLedger` reads the server's `LedgerView`: money from `{ cents }` (the server's `text` is ignored; the page
+    formats from cents), `today.sales.total` and `.count`, `today.expenses`, `today.moneyInHand`, `owes.customers` and
+    `owes.more`, records with `customer`, `reversed` and `reversesRecordId`. It returns the page's own shape with
+    plain cents. The ledger card says how many more people owe when `owes.more` is above zero. Tests: the full server
+    answer, a `text` that is never used, the old shapes refused, every bad cents value, `more`, a reversal.
+
+- [x] 57. **Read `length` for the counter**
+  - Files: `public/phone-logic.js`, `test/public/phone-logic/dial-and-path.test.ts`, `test/public/api.test.ts`
+  - Requirements: 66, 102
+  - `parseUssdReply` and `parseSmsReply` read the character count from `length`. A field called `chars` is ignored,
+    so the counter stays empty rather than wrong. Tests for both parsers.
+
+- [x] 58. **Undo row in plain words, undone rows struck through**
+  - Files: `public/ledger-logic.js`, `public/ledger.js`, `public/styles.css`, `test/public/ledger-logic.test.ts`
+  - Requirements: 72, 73
+  - `recordRows` marks a row `undone` from the server's `reversed` flag, and gives a reversal row `undoText`, such as
+    `Undo: cancelled Owes R20 Tendai (sugar)`. The Undo row is one sentence with the time and channel at its right.
+    An undone row is struck through (kind, amount, detail) and carries the word "undone". Tests: a debt, a payment, an
+    expense, a sale, a target outside the list.
+
+- [x] 59. **Contract test against the real app**
+  - Files: `test/integration/page-contract.test.ts`
+  - Requirements: 103, 106
+  - Builds the real app with `createApp` and the memory stores, makes a demo shop, sends a sale through
+    `/api/phone/ussd` and a debt and an undo through `/api/phone/sms`, and passes the real answers through
+    `readLedger`, `parseUssdReply`, `parseSmsReply`, `recordRows` and `counterInfo`. Checked against the page before
+    task 56: five of its six tests fail there.
+
+- [x] 60. **A demo shop that already has records: steps card and judges' list**
+  - Files: `public/index.html`, `public/styles.css`, `docs/judges.md`
+  - Requirements: 96, 104, 105
+  - The "Try it in one minute" card describes each step's effect as a change (Sales up by R45 and its count by one; a
+    Sale R45 row with channel Menu at the top; Tendai up by R20; after undo, the Owes row marked undone and Tendai
+    back). The two message examples lose their quote marks. `docs/judges.md` sections 2, 4 and 6 say the same, with
+    no absolute totals. The "Empty ledger" row now says why a fresh shop never shows it and how to see it (a DevTools
+    override). The long who-owes and near-the-limit rows count the three people the demo shop already has.
+
+- [x] 61. **Update the spec**
+  - Files: `.kiro/specs/browser-phone/requirements.md`, `design.md`, `tasks.md`
+  - Requirements: 102 to 106
+  - Route contract, ledger answer, Row, copy, states, tests and judges outline updated to match tasks 56 to 60.
+

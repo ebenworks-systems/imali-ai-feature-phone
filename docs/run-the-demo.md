@@ -51,6 +51,20 @@ If `POST /api/phone/demo` is given a number, it makes the shop for that number:
 `-d '{"phone":"+27000001234"}'`. The same address may make 10 demo shops an hour, and the server keeps at most 5,000
 demo shops.
 
+### What the browser phone's routes answer
+
+The page in `public/` calls these routes. All of them take a demo number (`+2700000` and four digits) and answer
+JSON. `test/integration/page-contract.test.ts` runs the real app and reads these answers with the page's own code.
+
+| Route | Answer |
+|---|---|
+| `POST /api/phone/ussd` `{ phone, sessionId?, text? }` | `{ response, length, limit }`: `response` starts `CON ` or `END `, `length` counts the text after that prefix, `limit` is 182 |
+| `POST /api/phone/sms` `{ phone, text }` | `{ reply, length, limit }`: `limit` is 160 |
+| `GET /api/ledger?phone=...` | `shop` (name, phone, currency, timeZone); `today` (date, `sales` `{ total, count }`, `expenses`, `moneyInHand`, `newDebts`, `paymentsReceived`, `totalOwed`); `owes` `{ customers: [{ name, owed }], more }`; `records` (the last 20, newest first: id, kind, amount, item?, customer?, channel, originalWords, createdAt, `reversed`, `reversesRecordId?`) |
+
+Every money value is `{ cents, text }`: whole cents and the same amount written for the shop's currency. A demo shop
+starts with 17 invented records spread over today and the two days before.
+
 ### Variables
 
 | Name | What it does | If it is empty |
@@ -90,6 +104,9 @@ connection (not Neon's pooled one). A local Postgres 14 or later works too.
 ```bash
 TEST_DATABASE_URL='<direct connection string>' npx vitest run test/store
 ```
+
+Against a remote database a test can take several seconds, so every test in a Postgres suite gets 30 seconds and
+the suite's set-up and clean-up get 60 (set once in `describePostgres` in `test/helpers/pg.ts`).
 
 Each suite makes a schema of its own (named `t_` and random hex), runs inside it, and drops it at the end. It never
 reads or changes anything in other schemas.

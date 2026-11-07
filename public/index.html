@@ -95,11 +95,11 @@
         <div class="bezel-core">
           <h2 id="steps-title">Try it in one minute</h2>
           <ol class="steps-list">
-            <li>Press Start demo shop.</li>
+            <li>Press Start demo shop. The ledger card shows a small shop that already has records.</li>
             <li>Dial <kbd>*384*46254#</kbd> and press the green key.</li>
-            <li>Press <kbd>1</kbd> for Sale, type <kbd>45</kbd>, press <kbd>1</kbd> to skip the item, press <kbd>1</kbd> to save.</li>
-            <li>Open Messages and send <code>"Tendai owes 20 sugar"</code>, then <code>"who owes"</code>.</li>
-            <li>Send <code>"undo"</code>, then <code>"close"</code>, and press Export to download the records Imali AI can import.</li>
+            <li>Press <kbd>1</kbd> for Sale, type <kbd>45</kbd>, press <kbd>1</kbd> to skip the item, press <kbd>1</kbd> to save. <span class="effect">In the ledger card, Sales goes up by R45 and its count by one. A Sale R45 row with channel Menu appears at the top.</span></li>
+            <li>Open Messages and send <code>Tendai owes 20 sugar</code>, then <code>who owes</code>. <span class="effect">Tendai's total owed goes up by R20. An Owes R20 row with channel Text appears at the top.</span></li>
+            <li>Send <code>undo</code>, then <code>close</code>, and press Export to download the records Imali AI can import. <span class="effect">After undo, the Owes row is marked undone, an Undo row appears at the top, and Tendai's total goes back.</span></li>
           </ol>
         </div>
       </div>
@@ -131,6 +131,7 @@
               <ol id="owes-list" class="owes-list"></ol>
               <p id="owes-empty" class="state-line" hidden>Nobody owes money.</p>
               <button type="button" id="owes-more" class="btn btn--quiet btn--small" aria-expanded="false" hidden>Show all</button>
+              <p id="owes-extra" class="state-line" hidden></p>
             </section>
 
             <section class="block" aria-labelledby="records-title">

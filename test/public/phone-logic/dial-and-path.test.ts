@@ -165,7 +165,7 @@ describe('0, 00, * and # through the state machine', () => {
 
 describe('parseUssdReply', () => {
   it('reads a CON screen and keeps its lines unchanged', () => {
-    const reply = parseUssdReply({ response: 'CON Mama Thandi\nToday: sales R1,240\n1 Sale\n9 More', chars: 40, limit: 182 });
+    const reply = parseUssdReply({ response: 'CON Mama Thandi\nToday: sales R1,240\n1 Sale\n9 More', length: 40, limit: 182 });
     expect(reply).toEqual({
       ok: true,
       kind: 'CON',
@@ -176,12 +176,12 @@ describe('parseUssdReply', () => {
   });
 
   it('reads an END screen', () => {
-    const reply = parseUssdReply({ response: 'END Saved: sale R45 bread. Sales today R1,285.', chars: 44, limit: 182 });
+    const reply = parseUssdReply({ response: 'END Saved: sale R45 bread. Sales today R1,285.', length: 44, limit: 182 });
     expect(reply).toMatchObject({ ok: true, kind: 'END', lines: ['Saved: sale R45 bread. Sales today R1,285.'] });
   });
 
   it('does not trim spaces or drop empty lines', () => {
-    const reply = parseUssdReply({ response: 'CON  indented\n\n  last ', chars: 1, limit: 182 });
+    const reply = parseUssdReply({ response: 'CON  indented\n\n  last ', length: 1, limit: 182 });
     expect(reply).toMatchObject({ ok: true, lines: [' indented', '', '  last '] });
   });
 
@@ -194,11 +194,16 @@ describe('parseUssdReply', () => {
       [Number.NaN, 182],
       [Number.MAX_SAFE_INTEGER + 2, 182],
     ] as const) {
-      const reply = parseUssdReply({ response: 'CON hi', chars, limit });
+      const reply = parseUssdReply({ response: 'CON hi', length: chars, limit });
       expect(reply.ok).toBe(true);
       if (reply.ok) expect(reply.chars === null || reply.limit === null).toBe(true);
     }
     expect(parseUssdReply({ response: 'CON hi' })).toMatchObject({ ok: true, chars: null, limit: null });
+  });
+
+  it('reads the count from `length`, the name the route uses, and ignores a field called `chars`', () => {
+    expect(parseUssdReply({ response: 'CON hi', length: 2, limit: 182 })).toMatchObject({ chars: 2, limit: 182 });
+    expect(parseUssdReply({ response: 'CON hi', chars: 2, limit: 182 })).toMatchObject({ chars: null, limit: 182 });
   });
 
   it('fails for a bad prefix or a missing response', () => {
@@ -224,12 +229,16 @@ describe('parseUssdReply', () => {
 
 describe('parseSmsReply', () => {
   it('reads a reply', () => {
-    expect(parseSmsReply({ reply: 'Saved: sale R45.', chars: 16, limit: 160 })).toEqual({
+    expect(parseSmsReply({ reply: 'Saved: sale R45.', length: 16, limit: 160 })).toEqual({
       ok: true,
       text: 'Saved: sale R45.',
       chars: 16,
       limit: 160,
     });
+  });
+
+  it('reads the count from `length` and ignores a field called `chars`', () => {
+    expect(parseSmsReply({ reply: 'Hi', chars: 2, limit: 160 })).toMatchObject({ chars: null, limit: 160 });
   });
 
   it('keeps going without counts', () => {

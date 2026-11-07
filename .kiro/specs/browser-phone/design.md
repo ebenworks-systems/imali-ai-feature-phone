@@ -29,31 +29,52 @@ load files that touch the DOM (jsdom is not installed, and adding it needs your 
 
 | Call | Page sends | Page reads |
 |---|---|---|
-| `POST /api/phone/ussd` | `{ phone, sessionId, text }` (`phone` is `+2700000xxxx`) | `response` (string, `CON ` or `END ` prefix), `chars`, `limit` |
-| `POST /api/phone/sms` | `{ phone, text }` | `reply`, `chars`, `limit` |
+| `POST /api/phone/ussd` | `{ phone, sessionId, text }` (`phone` is `+2700000xxxx`) | `response` (string, `CON ` or `END ` prefix), `length` (characters after the prefix), `limit` |
+| `POST /api/phone/sms` | `{ phone, text }` | `reply`, `length`, `limit` |
 | `GET /api/ledger?phone=` | `phone` through `encodeURIComponent` (a bare `+` would arrive as a space) | see below |
 | `GET /api/export?phone=` | same encoding | the body as a blob |
 | `POST /api/phone/demo` | `{ phone }` | the status only |
 
-`GET /api/ledger` answer, as `readLedger()` checks it (requirement 77). Anything else makes `readLedger()` return
-`{ ok: false }`:
+`GET /api/ledger` answer, as `readLedger()` checks it (requirements 77 and 103). It is the server's `LedgerView`
+(`src/server/views.ts`). Anything else makes `readLedger()` return `{ ok: false }`:
 
 ```js
 {
-  shop:   { name: string, currency: 'ZAR'|'USD'|'KES'|'NGN'|'GHS'|'ZMW'|'BWP', timeZone?: string },
-  today:  { sales: int, salesCount: int, spent: int, inHand: int },   // cents, inHand may be negative
-  whoOwes:[ { name: string, owed: int } ],                            // cents
-  records:[ { id, kind: 'sale'|'expense'|'debt'|'payment'|'reversal', amount: int, createdAt: string /*UTC ISO*/,
-              channel: 'ussd'|'sms'|'web', item?: string, customerDisplayName?: string, reversesRecordId?: string } ]
+  shop:    { name: string, phone: string, currency: 'ZAR'|'USD'|'KES'|'NGN'|'GHS'|'ZMW'|'BWP', timeZone: string },
+  today:   { date: string,                                   // shop's local date, YYYY-MM-DD (not read)
+             sales: { total: Money, count: int }, expenses: Money, moneyInHand: Money,   // moneyInHand may be negative
+             newDebts: Money, paymentsReceived: Money, totalOwed: Money },                // (the last three are not read)
+  owes:    { customers: [ { name: string, owed: Money } ], more: int },  // first 20, largest first; `more` were left out
+  records: [ { id, kind: 'sale'|'expense'|'debt'|'payment'|'reversal', amount: Money, channel: 'ussd'|'sms'|'web',
+               originalWords: string, createdAt: string /*UTC ISO*/, reversed: boolean,
+               item?: string, customer?: string, reversesRecordId?: string } ]   // last 20, newest first
 }
+// Money = { cents: int, text: string }
 ```
 
-Every cents value must pass `Number.isSafeInteger`. If the server spec names the keys differently, only
-`readLedger()` changes.
+Every `cents` value must pass `Number.isSafeInteger`. `Money.text` is ignored: the page writes its own text from the
+cents with `formatMoney`, which a test compares with the server's `text` for every amount in a real answer.
+
+`readLedger()` returns the page's own shape with plain cents, so the drawing code stays simple:
+
+| Server field | Page field |
+|---|---|
+| `shop.{ name, currency, timeZone }` | `shop.{ name, currency, timeZone }` (`timeZone` falls back to `Africa/Johannesburg`) |
+| `today.sales.total.cents`, `today.sales.count` | `today.sales`, `today.salesCount` |
+| `today.expenses.cents`, `today.moneyInHand.cents` | `today.spent`, `today.inHand` |
+| `owes.customers[].{ name, owed.cents }` | `whoOwes[].{ name, owed }` |
+| `owes.more` | `owesMore` |
+| `records[].{ id, kind, amount.cents, channel, createdAt, item, customer, reversed, reversesRecordId }` | the same names with `amount` as cents; `item`, `customer` and `reversesRecordId` become `''` when absent |
+
+The first version of the page read a contract written before the server existed (`whoOwes`, `salesCount`, `spent`,
+`inHand`, plain-number amounts, `customerDisplayName`, and `chars`). None of it matched, so the ledger card always said
+"Could not refresh." and the counter never showed (task 56). The page now reads the server's names, and the contract
+test keeps the two in step.
 
 ## Copy
 
-Exact strings. Straight quotes are as written in the brief.
+Exact strings. The demo shop starts with invented records, so a step's effect is written as a change and never as a
+total (requirement 104). Each effect is a second sentence in a `span.effect` shown on its own line under the step.
 
 | Place | Text |
 |---|---|
@@ -61,11 +82,11 @@ Exact strings. Straight quotes are as written in the brief.
 | `h1` | `Keep your shop's books on any phone.` |
 | Paragraph | `Dial a code or send a text message. The ledger works on any phone, with no data bundle, no app and no smartphone.` |
 | Steps `h2` | `Try it in one minute` |
-| Step 1 | `Press Start demo shop.` |
+| Step 1 | `Press Start demo shop. The ledger card shows a small shop that already has records.` |
 | Step 2 | `Dial *384*46254# and press the green key.` |
-| Step 3 | `Press 1 for Sale, type 45, press 1 to skip the item, press 1 to save.` |
-| Step 4 | `Open Messages and send "Tendai owes 20 sugar", then "who owes".` |
-| Step 5 | `Send "undo", then "close", and press Export to download the records Imali AI can import.` |
+| Step 3 | `Press 1 for Sale, type 45, press 1 to skip the item, press 1 to save.` then the effect: `In the ledger card, Sales goes up by R45 and its count by one. A Sale R45 row with channel Menu appears at the top.` |
+| Step 4 | `Open Messages and send Tendai owes 20 sugar, then who owes.` (the two messages are code chips, with no quote marks) then the effect: `Tendai's total owed goes up by R20. An Owes R20 row with channel Text appears at the top.` |
+| Step 5 | `Send undo, then close, and press Export to download the records Imali AI can import.` (`undo` and `close` are code chips) then the effect: `After undo, the Owes row is marked undone, an Undo row appears at the top, and Tendai's total goes back.` |
 | Ledger note | `Everything here is invented demo data.` |
 | Footer line 1 | `An open-source companion to Imali AI.` (the whole line is one link to `https://imali-ai.ebenworks.co`) |
 | Footer line 2 | `Imali AI: Africa's smartest AI Business OS.` (its own line, plain text, no link) |
@@ -439,8 +460,9 @@ If the dialled-menu spec decides the client should resolve 0 and 00, only `build
 the reducer change.
 
 `parseUssdReply`: `response` must be a string starting `CON ` or `END `. `lines` is the text after the 4-character
-prefix split on `\n`, unchanged (no trimming of inner spaces, no dropping of empty lines). `chars` and `limit` must
-be safe integers, 0 or more, or they become `null` (the counter then stays empty).
+prefix split on `\n`, unchanged (no trimming of inner spaces, no dropping of empty lines). The route's `length` (the
+parsed result calls it `chars`) and `limit` must be safe integers, 0 or more, or they become `null` (the counter then
+stays empty). A field called `chars` in the answer is not read. `parseSmsReply` counts the same way.
 
 ### State machine
 
@@ -569,15 +591,16 @@ exportFileName(nowMs)                 // 'imali-ai-export-YYYY-MM-DD.json' (UTC 
 with commas; `.xx` only when the cents are not zero; a leading `-` before the symbol for negatives (`-R60`). A test compares it
 with `src/core/money/format.ts` for every currency and for random cents (fast-check is already a dev dependency).
 
-`Row`: `{ id, kindWord, amountText, detail, channelWord, timeText, undone, isReversal, cancelsText }`.
+`Row`: `{ id, kindWord, amountText, detail, channelWord, timeText, undone, isReversal, undoText }`.
 
 - `kindWord`: sale `Sale`, expense `Spent`, debt `Owes`, payment `Paid`, reversal `Undo`.
 - `detail`: customer and item joined by ` - ` when both exist, whichever exists otherwise, empty if none.
 - `channelWord`: ussd `Menu`, sms `Text`, web `Web`.
-- `undone`: true when some reversal record in the list has `reversesRecordId` equal to this record's id. A reversal
-  always comes after its target, so a target inside the last 20 has its reversal inside it too.
-- Reversal rows have `amountText = ''` and `cancelsText = 'cancels Sale R45 bread'`, or `'cancels an earlier record'` when the target is
-  not in the list.
+- `undone`: the server's `reversed` flag for this record (never true for a reversal row).
+- Reversal rows have `amountText = ''` and `undoText`, a whole sentence: `'Undo: cancelled Owes R20 Tendai (sugar)'`,
+  `'Undo: cancelled Sale R45 bread'`, or `'Undo: cancelled an earlier record'` when the target is not in the list. The
+  cancelled record is written as kind word, amount, then the customer and, in brackets, the item (the bare item when
+  there is no customer). Ordinary rows keep `detail` as `Tendai - sugar`.
 
 ## Api helper (`public/api.js`)
 
@@ -645,10 +668,10 @@ Holds the `State`, an `Editor` timer and the current effect handlers.
 | Network error (text) | the sent line disappears, its text is back in the compose line, thread line `No network. Try again.` | sms failed |
 | Panel refresh error | old figures stay, `Could not refresh. Try again.` and a Retry button | ledger fetch or `readLedger` failed |
 | END screen | the END text on the LCD, centre key `OK`, any key goes home | reply began `END ` |
-| Long who-owes | the LCD shows the server's lines including `9 More`; pressing 9 and Send asks for the next page; the panel shows six names and `Show all N` | six-plus debtors |
+| Long who-owes | the LCD shows the server's lines including `9 More`; pressing 9 and Send asks for the next page; the panel shows six names and `Show all N` | ten or more debtors with short names (the demo shop starts with three) |
 | Counter near limit | `This screen: 176 of 182 characters - near the limit` in clay | `chars * 10 >= limit * 9` |
 | Counter over limit | `... - over the limit` in clay | `chars > limit` (a server bug made visible) |
-| Empty ledger | `No records yet.`, `Nobody owes money.`, today figures at `R0` | new shop |
+| Empty ledger | `No records yet.`, `Nobody owes money.` | not on a fresh demo shop (it starts with invented records); only when the answer has empty lists (DevTools override, or a test) |
 | Unknown code | `Unknown code. Try *384*46254#.` under the hint | non-empty dial line that is not the code |
 | Stale number | quietly the first-visit state | 404 on load |
 | Storage blocked | works for the visit, number lost on reload | `localStorage` throws |
@@ -665,15 +688,16 @@ section "Today"      three figures: Sales R1,240 (12)  |  Spent R300  |  In hand
 section "Who owes"   ol: name ........ R50 (largest first, six shown, "Show all N" button)
 section "Last records"  ul: [Sale] R45 bread        Menu   14:05
                             [Owes] R20 Tendai - sugar  Text  14:07
-                            [Sale] R45 (struck through) undone
-                            [Undo] cancels Sale R45 bread
+                            [Sale] R45 bread (struck through) undone
+                            Undo: cancelled Sale R45 bread        (one plain sentence, with the time and channel at its right)
 div.actions          [Start demo shop ->] primary   [Start over] quiet   [Export records] quiet
 p.note               "Everything here is invented demo data."
 p#panel-error        "Could not refresh. Try again." [Retry]   (hidden until needed)
 ```
 
 On 358 px a record row wraps to two lines: kind and amount on the first with the time at the right, detail and
-channel on the second. Lists are real `ol`/`ul`. The "undone" word is real text; the line-through is only a second cue.
+channel on the second. Lists are real `ol`/`ul`. The "undone" word is real text; the line-through (on the kind, amount and detail) is only a second cue. An Undo row has
+no pill and no amount: it is the sentence, then the time and the channel stacked at its right.
 While a shop does not exist, "Start demo shop" is the only live button. Once one exists, "Start demo shop" is
 `aria-disabled="true"` and "Start over" and "Export records" are live.
 
@@ -782,11 +806,12 @@ Vitest, no browser, under `test/public/` (the include pattern `test/**/*.test.ts
 
 | File | Covers |
 |---|---|
-| `test/public/phone-logic/dial-and-path.test.ts` | `classifyDial`, `buildUssdText`, the 0 and 00 rules, `parseUssdReply` / `parseSmsReply`, the `*`/`#` ban, entry trim, limits |
+| `test/public/phone-logic/dial-and-path.test.ts` | `classifyDial`, `buildUssdText`, the 0 and 00 rules, `parseUssdReply` / `parseSmsReply` (the count comes from `length`; a field called `chars` is ignored), the `*`/`#` ban, entry trim, limits |
 | `test/public/phone-logic/multitap.test.ts` | cycles for every key, wrap, the 900 ms boundary (899 joins, 900 starts a new character), another key accepting the pending one, mode toggle, capital rule, backspace on a pending character, `max` |
 | `test/public/phone-logic/counter.test.ts` | `counterInfo`: 143/182 ok, 163/182 ok, 164/182 near, 182/182 near, 183/182 over, 98/160 ok, 144/160 near, wording |
 | `test/public/phone-logic/state.test.ts` | the reducer table: no shop, dial to session, CON, END plus any key, end key from every view, request in flight ignores keys, stale `ussdReply` dropped, sms send/fail/restore, refresh effects, new session id each dial, `screenModel` labels and the "9 More" line surviving unchanged |
-| `test/public/ledger-logic.test.ts` | money parity with `src/core/money/format.ts` (7 currencies, property test), clock and record time in `Africa/Johannesburg` across midnight, `readLedger` accept and reject cases, `sortOwes`, `splitOwes`, `recordRows` (undone, reversal, target outside list), demo number helpers, export file name |
+| `test/public/ledger-logic.test.ts` | money parity with `src/core/money/format.ts` (7 currencies, property test), clock and record time in `Africa/Johannesburg` across midnight, `readLedger` on the server's shape (accept, reject, `text` ignored, the old shapes refused), `sortOwes`, `splitOwes`, `recordRows` (undone from the server flag, the Undo sentence for a debt, a payment, an expense, a target outside the list), demo number helpers, export file name |
+| `test/integration/page-contract.test.ts` | the real app (`createApp`, memory stores, no mocks) answers the demo, a sale by `/api/phone/ussd`, a debt and an undo by `/api/phone/sms`; the answers of `/api/ledger`, `/api/phone/ussd` and `/api/phone/sms` go through the page's `readLedger`, `parseUssdReply` and `parseSmsReply`; shop name, sales change, debt in the who-owes list, newest record first, the Undo row, the counter numbers, and the page's money text equal to the server's `text` |
 | `test/public/api.test.ts` | fake `fetch`: success, timeout (fake timers), network error, non-2xx, bad JSON, `+` encoded as `%2B` |
 
 Every screen the page writes itself (first visit, home, unknown code, wait, error, empty thread) is checked in the
@@ -800,10 +825,13 @@ The DOM files have no unit tests. They are checked by hand with `docs/judges.md`
 2. At 1280 px wide: layout, the sticky phone, the one-minute steps end to end, the keyboard, and each state.
 3. At 390 px wide: order (phone, steps, ledger), no sideways scroll, every key reachable, the same steps.
 4. States, how to trigger each: first visit (private window), loading (DevTools Slow 3G), network error (DevTools
-   Offline then Send), END (finish a sale), long who-owes (nine texts `Name owes 10`, then dial 6; the screen shows
-   `9 More`), counter near limit (the longest who-owes screen), reduced motion (OS setting).
+   Offline then Send), END (finish a sale), long who-owes (seven texts `Customer 1 owes 10` to `Customer 7 owes 10`,
+   then dial 6; the screen shows `9 More`), counter near limit (fourteen such texts; the who-owes screen is 164
+   characters), empty ledger (a DevTools override with empty lists, because a fresh demo shop has records), reduced
+   motion (OS setting).
 5. Contrast and focus (Tab through the phone; a visible ring everywhere).
-6. How to read the result (what the ledger panel should show after each step).
+6. How to read the result (what the ledger panel should show after each step, written as changes and never as totals,
+   because the demo shop starts with records placed relative to the current time).
 
 ## Decisions
 

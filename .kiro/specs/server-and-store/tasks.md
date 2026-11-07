@@ -435,3 +435,23 @@ the fixed clock, and replace the two handlers with `vi.mock` so they check exact
   `postgres`, no database needed; fails on the old helper). The Postgres suites themselves still need task 9.3.
   - Files: `test/helpers/pg.ts`, `test/helpers/pg.test.ts`, `docs/run-the-demo.md`
   - Requirements: 97, 77
+
+- [x] 10.2 **Add a contract test between the server and the page.** The page and the server were built from two
+  specs in parallel. Run together, the dialled menu, the text messages and the export worked, but the page read
+  `chars` where the routes send `length`, and it read a ledger shape (`whoOwes`, `today.spent`, plain numbers,
+  `customerDisplayName`) that is not the documented one. No test could see it: the route tests mock the handlers and
+  the page tests use answers its author wrote. The new test builds the real app with `createApp` and the memory stores,
+  makes a demo shop, sends a sale through `/api/phone/ussd` and a debt and an undo through `/api/phone/sms`, and
+  passes the real answers through the page's `readLedger`, `parseUssdReply` and `parseSmsReply`. The server is
+  unchanged: it was right, and the page was changed to read it (browser-phone tasks 56 to 60).
+  - Files: `test/integration/page-contract.test.ts`
+  - Requirements: 23, 25, 28, 29, 30, 98
+
+- [x] 10.3 **Give the Postgres tests time.** Against a remote database one test took 5.6 s against vitest's default of
+  5 s. `describePostgres` in `test/helpers/pg.ts` now gives its tests 30 s and its hooks 60 s, so the tests themselves
+  stay unchanged. `test/helpers/pg-timeout.test.ts` checks the number the test gets (fake `postgres`, no database).
+  `test/scripts/migrate.test.ts` uses a fake client and never connects, so it needed no change; the migration test that
+  uses a database is in `test/store/postgres/constraints.test.ts` and is built on `describePostgres`.
+  - Files: `test/helpers/pg.ts`, `test/helpers/pg-timeout.test.ts`
+  - Requirements: 99
+

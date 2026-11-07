@@ -854,9 +854,17 @@ Fixed clock for route tests: `2026-11-07T10:00:00Z` (12:00 in Johannesburg), hel
 | `test/store/postgres/constraints.test.ts` | 62, 63 |
 | `test/store/limit.test.ts` | 47 |
 | `test/store/postgres/pending.test.ts` | 65 to 67 |
+| `test/integration/page-contract.test.ts` | 28 to 30, 23, 25, 98 |
+| `test/helpers/pg-timeout.test.ts` (fake `postgres`) | 99 |
 
 How they work:
 
+- **The page contract test** (`test/integration/page-contract.test.ts`) uses no mocks: `createApp` with the memory
+  stores and a movable clock. It makes a demo shop, sends a sale through `/api/phone/ussd` and a debt and an undo
+  through `/api/phone/sms`, and hands the real JSON of `/api/ledger`, `/api/phone/ussd` and `/api/phone/sms` to the
+  page's `readLedger`, `parseUssdReply` and `parseSmsReply`. The plumbing tests below mock the handlers and the page
+  tests use answers the page's author wrote, so neither could see that the two sides named fields differently
+  (`length` against `chars`; `owes.customers` against `whoOwes`). This test can.
 - **Plumbing tests** for the Africa's Talking and browser routes replace the two handlers with
   `vi.mock('../../src/channels/index.js')` and `vi.mock('../../src/channels/sms/handler.js')`, so they check exactly what
   the app passes in and out and do not depend on the handlers being finished.
@@ -882,6 +890,9 @@ How they work:
   migration or test, unless the answer is exactly the schema (`assertSearchPath`). It then applies every file in
   `sql/`, and returns `{ sql, schema, drop() }`. `drop()` runs `drop schema ... cascade` and ends the connection.
   `TEST_DATABASE_URL` must still be a direct connection, and the check is what stops a pooled URL.
+  `describePostgres(name, body, options)` wraps `describe` with `{ timeout: 30_000 }` (`POSTGRES_TEST_TIMEOUT_MS`) and
+  gives `beforeAll` and `afterAll` 60 s (`POSTGRES_HOOK_TIMEOUT_MS`), because a remote database answers slowly (one test
+  took 5.6 s against vitest's 5 s default). Tests inside it need no timeout of their own.
 - **Postgres tests** are written as
   `const run = process.env.TEST_DATABASE_URL ? describe : describe.skip;` with the suite name
   `PostgresStore contract (skipped: set TEST_DATABASE_URL to run)` when it is not set, so `vitest --reporter=verbose`

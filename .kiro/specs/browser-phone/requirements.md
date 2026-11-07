@@ -20,18 +20,21 @@ turn into a record. Plain HTML, CSS and JavaScript in `public/`. No build step, 
 
 ## Routes the page calls
 
-The `server-and-store` and `dialled-menu` specs are written in parallel and are not in this checkout. The page is
-built against this contract. Anything the page needs beyond it is listed under "Assumptions" at the end.
+The page was first built against a contract written before the server existed. The two did not match when they ran
+together (task 56), so the table below is now the server's own answer, as `server-and-store` documents it (its
+requirements 23 to 30, and `src/server/views.ts`). Anything the page needs beyond it is listed under "Assumptions" at
+the end. The test `test/integration/page-contract.test.ts` checks this table against the real app.
 
 | Route | Request | Answer |
 |---|---|---|
-| `POST /api/phone/ussd` | JSON `{ phone, sessionId, text }` | `{ response, chars, limit }`; `response` starts `CON ` or `END ` |
-| `POST /api/phone/sms` | JSON `{ phone, text }` | `{ reply, chars, limit }` |
-| `GET /api/ledger?phone=` | none | `shop` (name, currency), `today` (sales, salesCount, spent, inHand), `whoOwes` `[{ name, owed }]`, and the last 20 records |
+| `POST /api/phone/ussd` | JSON `{ phone, sessionId, text }` | `{ response, length, limit }`; `response` starts `CON ` or `END `; `length` counts the text after that prefix |
+| `POST /api/phone/sms` | JSON `{ phone, text }` | `{ reply, length, limit }` |
+| `GET /api/ledger?phone=` | none | `shop` (name, phone, currency, timeZone); `today` (date, `sales` `{ total, count }`, `expenses`, `moneyInHand`, `newDebts`, `paymentsReceived`, `totalOwed`); `owes` `{ customers: [{ name, owed }], more }`; and `records`, the last 20, newest first, each with `id`, `kind`, `amount`, `channel`, `originalWords`, `createdAt`, `reversed`, and optionally `item`, `customer`, `reversesRecordId` |
 | `GET /api/export?phone=` | none | the records as a JSON download |
 | `POST /api/phone/demo` | JSON `{ phone }` | makes a demo shop for that number |
 
-Money is whole cents plus the shop's currency.
+Every money value in the `GET /api/ledger` answer is an object `{ cents, text }`. The page reads `cents` (a safe
+integer) and writes its own text from it with `formatMoney`; it never shows the server's `text` (requirement 70).
 
 ## EARS Acceptance Criteria
 
@@ -269,7 +272,7 @@ Money is whole cents plus the shop's currency.
 ### The counter
 
 66. WHEN a ussd reply or an sms reply arrives, THE page SHALL show under the phone "This screen: N of L characters"
-    (menu) or "Reply: N of L characters" (text), taking N and L from the route's `chars` and `limit`.
+    (menu) or "Reply: N of L characters" (text), taking N and L from the route's `length` and `limit`.
 
 67. WHILE N is at least 90 percent of L, THE counter SHALL add the words "near the limit" and use the clay colour.
     WHILE N is more than L, THE counter SHALL say "over the limit" instead.
@@ -280,7 +283,8 @@ Money is whole cents plus the shop's currency.
 ### The ledger panel
 
 69. THE ledger panel SHALL show the shop name and currency, today's figures (sales and their count, spent, in
-    hand), who owes (name and amount, largest first), and the last records. WHILE no demo shop exists, it SHALL show
+    hand), who owes (name and amount, largest first), and the last records. WHILE the server reports customers it
+    left out of the who-owes list (`owes.more` above zero), THE panel SHALL say how many more people owe money. WHILE no demo shop exists, it SHALL show
     "No demo shop yet. Press Start demo shop." in place of the figures.
 
 70. THE page SHALL format money from whole cents the way the server does: the currency symbol, no decimals when the
@@ -294,8 +298,11 @@ Money is whole cents plus the shop's currency.
     amount, its item or customer, the channel it came from (Menu, Text or Web) and its time in the shop's time zone,
     newest first. A record from an earlier day SHALL show its date before the time.
 
-73. WHEN a record has been reversed, THE ledger panel SHALL show it struck through with the word "undone". A reversal
-    record SHALL appear as an "Undo" row saying which record it cancels.
+73. WHEN the server marks a record `reversed`, THE ledger panel SHALL show it struck through and with the word
+    "undone", so the state is never shown by line or colour alone. A reversal record SHALL appear as one row that reads
+    in plain words, "Undo: cancelled Owes R20 Tendai (sugar)", naming the record it cancels by kind, amount, customer
+    and item (the item in brackets after a customer, bare otherwise), or "Undo: cancelled an earlier record" when that
+    record is not among the last 20.
 
 74. WHEN the page loads, WHEN a demo shop starts, and after every ussd or sms attempt finishes (reply or failure),
     THE ledger panel SHALL fetch `GET /api/ledger` and redraw. WHILE a fetch is running, a further refresh SHALL be
@@ -307,8 +314,9 @@ Money is whole cents plus the shop's currency.
 76. WHILE the ledger panel has no data yet, it SHALL show "Loading..." and set `aria-busy="true"`. WHEN there are no
     records, it SHALL say "No records yet."; WHEN nobody owes money, it SHALL say "Nobody owes money."
 
-77. THE page SHALL check the ledger answer before drawing it (cents are safe integers, kinds and channels are known,
-    lists are arrays). IF the answer is not valid, THEN THE page SHALL treat it as a failed refresh.
+77. THE page SHALL check the ledger answer before drawing it (every `cents` is a safe integer, kinds and channels are
+    known, `reversed` is a boolean, `owes.customers` and `records` are arrays). IF the answer is not valid, THEN THE
+    page SHALL treat it as a failed refresh.
 
 78. THE page SHALL put every value that came from the server or the owner into the page with `textContent` and
     SHALL NOT build markup from it.
@@ -377,7 +385,8 @@ Money is whole cents plus the shop's currency.
     and use `localStorage`; every rule they need SHALL live in the logic modules.
 
 96. THE repository SHALL contain `docs/judges.md`, a short manual check list for 1280 px and 390 px wide screens
-    that includes each state in `design.md`.
+    that includes each state in `design.md`. WHERE a state cannot happen on a fresh demo shop (the empty ledger), THE
+    check list SHALL say how to see it.
 
 97. THE page, its tests and its docs SHALL use only invented demo data, SHALL put demo numbers in `+27 00 000 xxxx`,
     and SHALL contain no key, token or password.
@@ -399,13 +408,42 @@ Money is whole cents plus the shop's currency.
 101. THE page's `formatMoney` SHALL write a negative amount with the minus sign before the currency symbol, `-R60` and
      `-KSh1,200.50`, never `R-60`, for every currency, exactly as `formatCents` in `src/core/money/format.ts` does.
 
+### Matching the server (added after the first run against it)
+
+102. THE phone SHALL read the character count of a menu screen or a text reply from the route's `length` field, and
+     the limit from `limit`. IF `length` is missing or is not a safe integer of 0 or more, THEN THE counter SHALL stay
+     empty (it SHALL NOT read a field called `chars`).
+
+103. THE page SHALL read `GET /api/ledger` in the server's shape (the Routes table): money from `{ cents }`, today's
+     sales from `today.sales.total` and `today.sales.count`, spent from `today.expenses`, money in hand from
+     `today.moneyInHand`, who owes from `owes.customers`, and each record's customer from `customer`. THE page SHALL
+     keep its own money formatting from cents and SHALL NOT show the server's `text`.
+
+104. THE demo shop starts with invented records (a shop called Thandi's Spaza), so the "Try it in one minute" card and
+     `docs/judges.md` sections 2, 4 and 6 SHALL describe each step as a change (Sales goes up by R45 and its count by
+     one; a Sale R45 row with channel Menu appears at the top; Tendai's total owed goes up by R20; after undo, the Owes
+     row is marked undone and Tendai's total goes back) and SHALL NOT state absolute totals, because the invented
+     records are placed relative to the current time.
+
+105. THE steps card SHALL write the text-message examples inside their code chips with no quote marks
+     (`Tendai owes 20 sugar`), because the chip already marks the words.
+
+106. THE test suite SHALL include a contract test, `test/integration/page-contract.test.ts`, that builds the real app
+     with `createApp` and the memory stores, makes a demo shop through `POST /api/phone/demo`, sends a sale through
+     `/api/phone/ussd` and a debt through `/api/phone/sms`, and passes the real JSON answers of `/api/ledger`,
+     `/api/phone/ussd` and `/api/phone/sms` through the page's own `readLedger`, `parseUssdReply` and
+     `parseSmsReply`. It SHALL check that the answers are accepted and read correctly: the shop name, today's sales,
+     the debt in the who-owes list, the newest record first, the Undo row after `undo`, and the counter numbers. It
+     SHALL fail on the page as it was before task 56.
+
 ## Assumptions about the other specs
 
 These are the points where this page needs more than the route contract above says. Each should be confirmed
 against the `server-and-store` and `dialled-menu` specs. The page needs only a one-function change if one is wrong.
 
-- **A1.** `GET /api/ledger` returns the top-level keys `shop`, `today`, `whoOwes` and `records`, and answers 404 for
-  a number with no shop. `shop.timeZone` may be missing; the page then uses `Africa/Johannesburg`.
+- **A1.** `GET /api/ledger` returns the top-level keys `shop`, `today`, `owes` and `records` (confirmed by the contract
+  test), and answers 404 for a number with no shop. `shop.timeZone` is always sent; if it is missing or unknown the
+  page uses `Africa/Johannesburg`.
 - **A2.** `POST /api/phone/demo` answers 2xx on success and 409 when the number is already a shop.
 - **A3.** The dialled menu works out `0` (back one screen) and `00` (main menu) from the raw path, as the network
   would send it, because only the server knows its screens.

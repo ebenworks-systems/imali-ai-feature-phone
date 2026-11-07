@@ -317,6 +317,13 @@ kbd { white-space: nowrap; }
   line-height: 1.75rem;
   overflow-wrap: anywhere;
 }
+.steps-list .effect {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
 .steps-list li::before {
   content: counter(step);
   position: absolute;
@@ -740,12 +747,18 @@ kbd { white-space: nowrap; }
   color: var(--sage-deep);
   font: 500 var(--text-xs) / 1.4 var(--font-mono);
 }
-.rec--reversal .rec-kind { background: transparent; box-shadow: var(--ring); color: var(--clay); }
+/* An Undo row is one sentence, with the time and the channel stacked at its right. */
+.records-list li.rec--reversal {
+  grid-template-areas: "note note time" "note note chan";
+  align-items: start;
+}
+.rec--reversal .rec-note { color: var(--ink); font-size: var(--text-base); }
 .rec-amount { grid-area: amount; font: 500 var(--text-base) / 1.4 var(--font-mono); overflow-wrap: anywhere; }
 .rec-time { grid-area: time; font: 400 var(--text-xs) / 1.4 var(--font-mono); color: var(--ink-soft); white-space: nowrap; }
 .rec-note { grid-area: note; min-width: 0; font-size: var(--text-sm); color: var(--ink-soft); overflow-wrap: anywhere; }
 .rec-chan { grid-area: chan; font: 400 var(--text-xs) / 1.4 var(--font-mono); color: var(--ink-soft); }
 .rec-flag { color: var(--clay); font-weight: 500; text-decoration: none; }
+.rec--undone .rec-kind,
 .rec--undone .rec-amount,
 .rec--undone .rec-detail { text-decoration: line-through; }
 

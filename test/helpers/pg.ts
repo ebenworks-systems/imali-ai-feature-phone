@@ -53,6 +53,14 @@ export async function assertSearchPath(
   }
 }
 
+/**
+ * A test against a remote database (Neon) can take several seconds for one round trip plus its work: one took 5.6 s
+ * against vitest's default of 5 s. Every test in a `describePostgres` suite gets 30 s, and its hooks get 60 s, so the
+ * tests themselves carry no timeout.
+ */
+export const POSTGRES_TEST_TIMEOUT_MS = 30_000;
+export const POSTGRES_HOOK_TIMEOUT_MS = 60_000;
+
 /** Names the missing variable once, so a skipped suite tells the reader how to run it. */
 export const SKIP_NOTE = 'skipped: set TEST_DATABASE_URL to run';
 
@@ -120,14 +128,14 @@ export function describePostgres(
     }));
     return;
   }
-  describe(name, () => {
+  describe(name, { timeout: POSTGRES_TEST_TIMEOUT_MS }, () => {
     let db: TestDatabase | undefined;
     beforeAll(async () => {
       db = await createTestDatabase(url, options);
-    }, 60_000);
+    }, POSTGRES_HOOK_TIMEOUT_MS);
     afterAll(async () => {
       await db?.drop();
-    }, 60_000);
+    }, POSTGRES_HOOK_TIMEOUT_MS);
     body(() => {
       if (!db) throw new Error('The test database is not ready');
       return db;

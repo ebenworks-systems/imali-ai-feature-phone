@@ -181,14 +181,17 @@ export function buildUssdText(path, entry) {
 
 const safeCount = (value) => (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null);
 
-/** @returns {{ ok: true, kind: 'CON' | 'END', lines: string[], chars: number | null, limit: number | null } | { ok: false }} */
+/**
+ * The routes answer `{ response, length, limit }`; `chars` is the page's own name for `length`.
+ * @returns {{ ok: true, kind: 'CON' | 'END', lines: string[], chars: number | null, limit: number | null } | { ok: false }}
+ */
 export function parseUssdReply(json) {
   if (typeof json !== 'object' || json === null) return { ok: false };
   const { response } = json;
   if (typeof response !== 'string') return { ok: false };
   const kind = response.startsWith('CON ') ? 'CON' : response.startsWith('END ') ? 'END' : null;
   if (kind === null) return { ok: false };
-  return { ok: true, kind, lines: response.slice(4).split('\n'), chars: safeCount(json.chars), limit: safeCount(json.limit) };
+  return { ok: true, kind, lines: response.slice(4).split('\n'), chars: safeCount(json.length), limit: safeCount(json.limit) };
 }
 
 /** @returns {{ ok: true, text: string, chars: number | null, limit: number | null } | { ok: false }} */
@@ -196,7 +199,7 @@ export function parseSmsReply(json) {
   if (typeof json !== 'object' || json === null) return { ok: false };
   const { reply } = json;
   if (typeof reply !== 'string' || reply.trim() === '') return { ok: false };
-  return { ok: true, text: reply, chars: safeCount(json.chars), limit: safeCount(json.limit) };
+  return { ok: true, text: reply, chars: safeCount(json.length), limit: safeCount(json.limit) };
 }
 
 /**
