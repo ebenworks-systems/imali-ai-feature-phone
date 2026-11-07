@@ -566,7 +566,9 @@ check, a repeated undo cannot be mistaken for a second reversal.
 4. Read the record the reversal points at (`reversesRecordId`) and build `Undone:` from it and the records as they are now.
 
 **Sign-up** (`createShop` in `ports.ts`): `store.createShop(createShop({ ..., id: shopIdFor(sessionId) }))`. On
-`ShopAlreadyExistsError`, read `findShopByPhone(phone)` and use that shop, whichever session made it. If that shop has
+`ShopAlreadyExistsError`, read `findShopByPhone(phone)` and use that shop, whichever session made it; failing that, read
+`findShopById(id)` and use that shop only when its `phone` equals the caller's (the client chooses the session id, so an
+id can belong to another phone's shop; then the error is rethrown and nothing changes). If the shop found has
 another session's id, the rest of the path is read as ordinary menu choices, and a stray name typed at the main menu
 just shows the menu again with the choose-a-number notice.
 
@@ -594,7 +596,7 @@ something else was saved in between. The record is saved once either way.
 | A total already past a safe whole number when a screen is shown | the too-big screen (`END These numbers are too big to show here.`) instead of a wrong figure |
 | Duplicate record id, matching | the same `Saved:` screen, nothing added |
 | Duplicate record id, not matching | `saveFailed`, nothing added |
-| `ShopAlreadyExistsError` | carry on with the shop that exists |
+| `ShopAlreadyExistsError` | carry on with the shop that exists for this phone; a shop found only by id counts only if it is this phone's, otherwise rethrow |
 | Any other thrown error | log `error.name` and `error.message`, return `badRequest` |
 
 The route (a later spec) must check that the call comes from Africa's Talking. Anyone who can post to `/ussd` can

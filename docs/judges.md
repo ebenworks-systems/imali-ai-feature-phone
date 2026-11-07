@@ -86,7 +86,7 @@ Typing on the pad (the way a feature phone does it)
 | Long who-owes | The demo shop already has three people who owe money. In Messages send seven texts: `Customer 1 owes 10`, `Customer 2 owes 10` and so on up to `Customer 7 owes 10`. Dial the code and press `6`. The screen ends with `9 More`. The ledger card shows six names and a "Show all 10" button. |
 | Counter near the limit | Keep going in Messages with `Customer 8 owes 10` up to `Customer 14 owes 10`. The who-owes screen is then 164 characters and shows `This screen: 164 of 182 characters - near the limit` in the clay colour. The server breaks a long list into screens before it gets longer, so this is the closest it comes. |
 | Empty ledger | This does not happen on a fresh demo shop, which always has records. To see the empty words, answer the ledger call with empty lists: in DevTools, Network, right-click the `ledger?phone=...` request, choose "Override content", and set `owes` to `{"customers":[],"more":0}` and `records` to `[]`. Press Retry. The card says "Nobody owes money." and "No records yet." |
-| Stale number | Start a shop, then restart the server. On reload the page quietly returns to the first-visit state. |
+| Stale number | Start a shop, then restart the server. On reload the page quietly returns to the first-visit state. The same happens when you dial or send a message after the shop has gone: the server answers 404 "No demo shop on this number. Press Start demo shop." and the page goes back to the first-visit state without an error message. Demo shops are cleared away after about a week, so a number kept in a browser for longer than that ends up here. |
 | Storage blocked | Open the page with site data blocked. It works for the visit; the number is lost on reload. |
 | Reduced motion | Turn on "Reduce motion" in your system settings. Sections and screen lines appear at once, with no fade. |
 | No JavaScript | Disable JavaScript. The page shows a line saying the demo needs JavaScript, and the text is readable. |
@@ -115,10 +115,14 @@ Compare with what you saw just before the step.
 | `close` | unchanged | unchanged | unchanged |
 | Export records | unchanged | unchanged | unchanged; a JSON file downloads |
 
-Nothing is ever deleted. "Undo" adds a reversing record, so the old row stays and is marked "undone" in words (and
-struck through), never by colour alone.
+Nothing you record is ever deleted. "Undo" adds a reversing record, so the old row stays and is marked "undone" in words
+(and struck through), never by colour alone. The one exception is housekeeping of the invented demo data: a demo shop
+and its records are cleared away about a week after it was made, so the demo stays free for the next judge.
 
 ## 7. Start over
 
 Press **Start over**. The phone goes home, the thread is empty, and a new demo number is made. The old shop stays on
-the server untouched.
+the server untouched until it is cleared away, about a week after it was made.
+
+Only the **Start demo shop** and **Start over** buttons make a demo shop. Dialling or texting a demo number that has no
+shop does not make one.

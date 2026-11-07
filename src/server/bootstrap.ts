@@ -7,6 +7,10 @@
  * - AT_USERNAME and AT_API_KEY set: an Africa's Talking sender (from AT_SHORTCODE, default 46254; the sandbox host
  *   when AT_USERNAME is `sandbox`). Not set: no sender.
  * - AT_CALLBACK_KEY set: POST /ussd and POST /sms need `?k=<the key>`.
+ * - AT_USERNAME and AT_API_KEY set but AT_CALLBACK_KEY not: POST /ussd and POST /sms answer 503 (the start line says
+ *   `callback=missing-key`); the server still starts and the browser routes work. No sender: they stay open.
+ * - ADDRESS_SALT set: the salt client addresses are hashed with before the demo limits are kept. Not set: a fixed
+ *   built-in salt (the start line says `salt=default`), the same in every instance.
  */
 
 import { GeminiReader, type ModelReader } from '../ai/reader.js';
@@ -17,10 +21,12 @@ import {
   closePostgres,
   connectPostgres,
   createPostgresStore,
+  PostgresDemoQuotaStore,
   PostgresPendingStore,
   PostgresProcessedTextStore
 } from '../store/postgres/index.js';
 import { InMemoryProcessedTextStore, type ProcessedTextStore } from '../store/processed.js';
+import { InMemoryDemoQuotaStore, type DemoQuotaStore } from '../store/quota.js';
 import { createApp } from './app.js';
 import type { App } from './context.js';
 import { readConfig } from './config.js';
@@ -30,9 +36,12 @@ export interface Parts {
   store: LedgerStore;
   pending: PendingStore;
   processed: ProcessedTextStore;
+  quota: DemoQuotaStore;
   reader?: ModelReader;
   smsSender?: SmsSender;
   callbackKey?: string;
+  refuseCallbacks?: boolean;
+  addressSalt?: string;
 }
 
 export interface Started {
@@ -55,6 +64,7 @@ export function createAppFromEnv(
   let store: LedgerStore;
   let pending: PendingStore;
   let processed: ProcessedTextStore;
+  let quota: DemoQuotaStore;
   let close: () => Promise<void> = async () => {};
 
   if (config.databaseUrl) {
@@ -62,11 +72,13 @@ export function createAppFromEnv(
     store = createPostgresStore(sql);
     pending = new PostgresPendingStore(sql, now ? { now } : {});
     processed = new PostgresProcessedTextStore(sql, now ? { now } : {});
+    quota = new PostgresDemoQuotaStore(sql, now ? { now } : {});
     close = () => closePostgres(sql);
   } else {
     store = new MemoryStore();
     pending = new InMemoryPendingStore(now ? { now } : {});
     processed = new InMemoryProcessedTextStore(now ? { now } : {});
+    quota = new InMemoryDemoQuotaStore(now ? { now } : {});
   }
 
   const reader = config.geminiApiKey
@@ -85,9 +97,12 @@ export function createAppFromEnv(
     store,
     pending,
     processed,
+    quota,
     ...(reader ? { reader } : {}),
     ...(smsSender ? { smsSender } : {}),
-    ...(config.callbackKey ? { callbackKey: config.callbackKey } : {})
+    ...(config.callbackKey ? { callbackKey: config.callbackKey } : {}),
+    ...(config.callbacksMissingKey ? { refuseCallbacks: true } : {}),
+    ...(config.addressSalt ? { addressSalt: config.addressSalt } : {})
   };
 
   const app = createApp({ ...parts, ...(now ? { now } : {}) });
@@ -95,7 +110,8 @@ export function createAppFromEnv(
   const sms = config.at ? (config.at.username === 'sandbox' ? 'sandbox' : 'live') : 'off';
   const summary =
     `store=${config.databaseUrl ? 'postgres' : 'memory'} gemini=${reader ? 'on' : 'off'} ` +
-    `sms=${sms} callback=${config.callbackKey ? 'key' : 'open'}`;
+    `sms=${sms} callback=${config.callbackKey ? 'key' : config.callbacksMissingKey ? 'missing-key' : 'open'} ` +
+    `salt=${config.addressSalt ? 'set' : 'default'}`;
 
   return { app, parts, summary, warnings: config.warnings, close };
 }

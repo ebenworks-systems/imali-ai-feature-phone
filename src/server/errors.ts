@@ -3,7 +3,9 @@ import { maskPhone } from './phone.js';
 
 /** The sentence an owner may see for an error. Never the message of the error itself. */
 export function ownerSentence(error: unknown): string {
-  return error instanceof Error && error.name === 'RecordLimitError' ? SENTENCES.full : SENTENCES.generic;
+  if (error instanceof Error && error.name === 'RecordLimitError') return SENTENCES.full;
+  if (error instanceof Error && error.name === 'ShopLimitError') return SENTENCES.shopsFull;
+  return SENTENCES.generic;
 }
 
 /**

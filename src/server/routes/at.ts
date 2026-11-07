@@ -42,6 +42,9 @@ export function registerAtRoutes(app: App, ctx: AppContext): void {
     if (!phone) return refuse(c, 400, SENTENCES.badPhone);
     c.set('phone', phone);
 
+    // At most 30 requests a minute per phone number (a key press is a request). The owner sees why.
+    if (!ctx.atPhoneLimiter.check(phone).allowed) return c.text(`END ${SENTENCES.rate}`, 200);
+
     // The latest input is the part after the last "*". The whole text is bounded by the body limit.
     const latest = text.split('*').pop() ?? '';
     if (latest.length > MAX_MENU_INPUT) return c.text(`END ${SENTENCES.menuLong}`, 200);
@@ -71,6 +74,12 @@ export function registerAtRoutes(app: App, ctx: AppContext): void {
     const phone = normalizePhone(rawFrom);
     if (!phone) return refuse(c, 400, SENTENCES.badPhone);
     c.set('phone', phone);
+
+    // At most 30 requests a minute per phone number. Nothing is sent back as a text: a flood must not cost us texts.
+    const verdict = ctx.atPhoneLimiter.check(phone);
+    if (!verdict.allowed) {
+      return refuse(c, 429, SENTENCES.rate, { 'Retry-After': String(verdict.retryAfterSeconds) });
+    }
 
     // Too long to read: say so (and send it), without a claim or a handler call.
     if (text.length > MAX_SMS_TEXT) {

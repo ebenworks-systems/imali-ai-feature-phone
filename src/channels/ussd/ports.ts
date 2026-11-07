@@ -90,9 +90,13 @@ export function makePorts(a: {
       } catch (error) {
         if (!hasName(error, 'ShopAlreadyExistsError')) throw error;
         // A repeat of this request, a copy running at the same time, or another session got there first:
-        // carry on with the shop that exists, whichever session made it.
+        // carry on with the shop that exists for this phone, whichever session made it.
+        //
+        // The shop found by id is used only when it belongs to this phone. The client chooses the session id and
+        // the shop id is made from it, so an id that is taken by another phone's shop must never hand that shop
+        // (its name, its records) to this caller.
         const existing = (await store.findShopByPhone(phone)) ?? (await store.findShopById(id));
-        if (!existing) throw error;
+        if (!existing || existing.phone !== phone) throw error;
         ports.shop = existing;
         return existing;
       }

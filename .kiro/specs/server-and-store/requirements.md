@@ -186,7 +186,8 @@ routes** are `POST /ussd` and `POST /sms`.
 45. If a phone number has made 60 requests to the browser routes in the last 60 seconds, then the app shall answer
     the next request from that number with 429, a `Retry-After` header in seconds and a plain sentence, and the
     refused request shall not count toward the 60; requests to `POST /api/phone/demo` that carry no phone number
-    shall count together under one shared key and meet the same limit.
+    shall count together under one shared key and meet the same limit. Every browser route also counts against the client
+    address (requirement 106).
 
 46. The rate limiter shall keep its counts in the memory of the running instance, so on Vercel the limit is per
     instance.
@@ -339,9 +340,10 @@ routes** are `POST /ussd` and `POST /sms`.
     `text/plain` with a plain sentence, shall make the check before the body is read, and shall not call a handler,
     the store, the processed-text store or the sender.
 
-84. Where AT_CALLBACK_KEY is not set, `POST /ussd` and `POST /sms` shall accept every request, as they do in local
-    runs and in tests; the browser routes and `GET /health` shall never need the key; and the key shall not appear in
-    any response, log line or start-up line.
+84. Where AT_CALLBACK_KEY is not set and the Africa's Talking sender is not set either (a local run, and tests),
+    `POST /ussd` and `POST /sms` shall accept every request; where the sender is set and the key is not, requirement
+    113 applies. The browser routes and `GET /health` shall never need the key, and the key shall not appear in any
+    response, log line or start-up line.
 
 ### Repeated text callbacks
 
@@ -376,13 +378,17 @@ routes** are `POST /ussd` and `POST /sms`.
 92. If a client address has called `POST /api/phone/demo` 10 times in the last hour, then the app shall answer the
     next call with 429, a `Retry-After` header in seconds and a plain sentence, shall not read or write the store
     for it, and the refused call shall not count toward the 10; every call counts, including calls that name a phone
-    number and calls that end in 409. The count is kept in the memory of the running instance (as in requirement 46).
+    number and calls that end in 409. The count is kept in the store, not in the memory of one instance, so it holds
+    across serverless instances (requirement 108; this replaces "kept in the memory of the running instance").
 
-93. The client address shall be the first address in the `x-forwarded-for` header, trimmed (Vercel sets it); where
-    that header is missing or blank the app shall use `x-real-ip`, and where that is also missing the app shall use
-    one shared key `unknown`.
+93. The client address shall be `x-real-ip`, trimmed (Vercel sets it to the address that connected, and a caller cannot
+    write it); where that is missing or blank, the last entry of `x-forwarded-for`, trimmed (the entry the platform
+    added); where that is also missing or blank, one shared key `unknown`. The first entry of `x-forwarded-for` shall
+    never be used, because a caller can write it. A value longer than 64 characters shall be cut to 64. (This replaces
+    "the first address in the `x-forwarded-for` header".)
 
-94. If the store already holds 5,000 or more shops with a demo number, then `POST /api/phone/demo` shall answer 503
+94. If the store already holds 5,000 or more shops with a demo number (or the site has made 1,000 in the last 24 hours,
+    requirement 108), then `POST /api/phone/demo` shall answer 503
     JSON `{ error }` with a plain sentence and shall create nothing. The check and the insert are two steps, so
     simultaneous calls can pass 5,000 by a few shops.
 
@@ -411,3 +417,122 @@ routes** are `POST /ussd` and `POST /sms`.
     `beforeAll` and `afterAll` hooks 60 seconds, so that a test against a remote database (one took 5.6 s against
     vitest's default of 5 s) does not time out, and the tests themselves shall carry no timeout.
 
+
+### Fixes after the second review (before the live demo went public)
+
+A second reviewer read the code and found six faults; each was confirmed. Requirements 100 to 117 close them. Where one
+of them replaces a sentence above, the sentence says so.
+
+#### The browser routes do not make shops
+
+100. If `POST /api/phone/ussd` or `POST /api/phone/sms` receives a demo number that has no shop, then the app shall
+     answer 404 JSON `{ error }` with the sentence `No demo shop on this number. Press Start demo shop.`, shall make
+     the check after the shape, number and length checks and before any handler runs, and shall write nothing: no
+     shop, no record and no waiting question. Before this, `text` "A*1" on the first route and "hi" then a name on the
+     second signed a new shop up for any demo number, without the limit per address or the cap of 5,000, so one client
+     could use up all 10,000 demo numbers and "Start demo shop" would fail for everyone. (Amends requirements 23, 25
+     and 27: they describe a number that has a shop.)
+
+101. The app shall hand the handlers on the two browser routes a store that cannot make a shop (`createShop` throws
+     `ShopCreationNotAllowedError`), so that only `POST /api/phone/demo` makes demo shops even if a shop is cleared
+     away between the check in requirement 100 and the handler's own look.
+
+#### Housekeeping of invented demo data
+
+102. The demo shop, its customers, its phone number and every figure are invented (the product rules). Clearing away a
+     finished demonstration is housekeeping of invented data and is not the deletion of an owner's record. In the
+     terms of the records rules: records are append-only for an owner and "undo" adds a reversal; an owner's record is
+     never deleted or changed. A demo shop is removed whole, with all its records and its waiting question, or not at
+     all, and only after 7 days. No record is ever deleted on its own, and no shop on a number that is not a demo
+     number is ever deleted at all.
+
+103. The store interface shall have `deleteExpiredDemoShops(createdBefore, maxShops)`, and both stores shall implement
+     it. It shall remove the shops whose phone number is a whole demo number (`+2700000` and exactly four digits) and
+     whose `createdAt` is before `createdBefore`, oldest first, at most `maxShops` of them and never more than 1,000,
+     with all their records, and return the phone numbers it removed. The store, not the caller, shall decide what a
+     demo number is: the method shall take no prefix, no shop id and no record id. A shop on any other number, of any
+     age, shall never be removed. A `maxShops` that is 0, negative or not a number, or a `createdBefore` that is not a
+     real date, shall remove nothing. A removed number, shop id and record id can be used again.
+
+104. The Postgres store shall do requirement 103 in one transaction: select the shops `for update` with the demo test
+     in SQL, delete their `pending_questions` rows, delete their `records` rows by `shop_id` in one statement (the
+     foreign keys between a shop's own records are checked at the end of the statement), then delete the shops with the
+     demo test repeated. The memory store shall do the same to its own maps. The memory pending store is a separate
+     object, so the app clears the waiting question of each phone number the store gives back.
+
+105. When `POST /api/phone/demo` has passed its limit on the client address and its body and phone checks, the app shall
+     call `deleteExpiredDemoShops` with now minus 7 days and at most 200 shops, before it checks the daily ceiling and
+     the cap of 5,000, so the cap frees itself over the judging weeks. If the housekeeping fails, the app shall log the
+     error and carry on with the call. No other route shall call it, and no other code shall delete a shop or a record
+     (a test scans the source for that). A demo shop's `createdAt` is the time of its oldest invented record, two days
+     before it is made, so a demo shop lives about 5 days after it is made.
+
+#### Limits per client address
+
+106. Every browser route (`POST /api/phone/ussd`, `POST /api/phone/sms`, `POST /api/phone/demo`, `GET /api/ledger` and
+     `GET /api/export`) shall also count against the client address (requirement 93): at most 120 requests a minute
+     per address. The 121st gets 429 with `Retry-After` and the usual sentence, before any body is read, and a refused
+     request is not counted. The count is in the memory of the running instance, in addition to the 60 a minute per
+     phone number (requirement 45).
+
+107. The salt that addresses are hashed with shall come from ADDRESS_SALT; where it is not set (not blank), the server
+     shall use a fixed built-in salt, the same in every instance so that every instance counts alike. The start line
+     shall say `salt=default` when ADDRESS_SALT is not set and `salt=set` when it is, and shall never show the value.
+
+108. The limit of 10 calls an hour per client address on `POST /api/phone/demo` (requirements 92 and 93) and a ceiling of
+     1,000 demo shops made in 24 hours by the whole site shall be kept in a `DemoQuotaStore` (memory in tests and local
+     runs, Postgres in the live demo), so they hold across serverless instances. The store shall be keyed by the
+     SHA-256 of the salt and the address as 64 hex digits, and shall never be given or keep the address itself: both
+     stores refuse a key of any other shape, and the table refuses it too. Every allowed call counts, including a call
+     that ends in 409; a refused call does not count; a demo shop that was really made counts toward the ceiling. Rows
+     older than 24 hours are removed as part of a claim. When the ceiling is reached the app shall answer 503 with the
+     demo-full sentence and make nothing.
+
+109. The Postgres version shall use the table `demo_quota` (new file `sql/002_demo_quota.sql`; an applied migration is
+     never edited), claim a call in one transaction that first takes `pg_advisory_xact_lock` on the key so two
+     instances cannot both pass the limit, and prune old rows in small batches with `for update skip locked`.
+
+110. ADDRESS_SALT shall be in `.env.example` and in the variables table of `docs/run-the-demo.md`.
+
+111. The optional model reader shall be asked at most 200 times an hour in all, by every caller together, in the
+     memory of the running instance. Beyond that the app shall skip the reader (it answers `null` at once) and the
+     rules answer alone. A skipped call is not counted.
+
+#### The Africa's Talking callbacks
+
+112. The callback key shall still be compared in constant time, as in requirement 82, whatever is added around the check:
+     the check comes first, before the 503 of requirement 113 and before the limits of requirement 114.
+
+113. Where the Africa's Talking sender is configured (AT_USERNAME and AT_API_KEY set) and AT_CALLBACK_KEY is not, `POST
+     /ussd` and `POST /sms` shall answer 503 `text/plain` with a plain sentence (`This service is not set up yet. Please
+     try again later.`), before any body is read, and shall not call a handler, the store, the processed-text store or
+     the sender; the start line shall say `callback=missing-key` and a start-up warning shall name AT_CALLBACK_KEY; the
+     server shall still start and the browser routes and `GET /health` shall still work. Where there is no sender
+     (a local run), the callbacks stay open as in requirement 84. Where a key is set, requirements 82 and 83 apply.
+     Before this, the callbacks were open without a key, so anyone could read and write the ledger of any non-demo
+     number and make the server send a text from the account.
+
+114. `POST /ussd` and `POST /sms` shall be limited, after the key check, to 300 requests a minute per client address (429
+     with `Retry-After` before any body is read) and 30 a minute per phone number (`/ussd` answers 200 `END` with the
+     usual sentence; `/sms` answers 429, sends no text and does not call the handler). A refused request is not
+     counted. Both counts are in the memory of the running instance. One key press on the dialled menu is one request.
+
+115. The store shall hold at most 2,000 shops whose number is not a demo number. A sign-up beyond that shall be refused
+     with `ShopLimitError` and no shop made; `/sms` shall answer `Sorry, no new shops can be added right now. Please try
+     again later.` The count is made in the store each time (all shops minus demo shops), so it holds across instances.
+     A repeat of a sign-up that already worked (the shop for that phone or id exists) is passed to the store, which
+     answers it as before. A number that starts like a demo number but is not a whole one (`+270000012345`) is refused,
+     because it would be counted as a demo shop and slip past both caps.
+
+#### Tests
+
+116. Each of requirements 100 to 115 shall have a test that fails on the code as it was before and passes now:
+     `test/server/routes.noshop.test.ts`, `housekeeping.test.ts`, `limits.address.test.ts`, `routes.closed.test.ts`,
+     `phone.test.ts`, `bootstrap.test.ts` and `config.test.ts` for the app; `test/store/contract.ts` (both stores),
+     `limit.test.ts`, `quota.ts` and `quota.test.ts` for the memory side; and `test/store/postgres/housekeeping.test.ts`,
+     `quota.test.ts` and `constraints.test.ts` for Postgres. The Postgres tests that need a database are skipped without
+     TEST_DATABASE_URL (task 11.9); the ones with a fake `sql` run everywhere.
+
+117. A test through `POST /ussd` with two phone numbers and one session id (the client chooses the session id, and the
+     shop id is made from it) shall show that the second phone gets the plain sorry screen, not the first phone's menu,
+     and that no shop is made for it (requirement 54 of the `dialled-menu` spec).

@@ -2,6 +2,7 @@
 
 import { vi } from 'vitest';
 import { InMemoryPendingStore } from '../../src/channels/sms/pending.js';
+import { createShop } from '../../src/core/shops/types.js';
 import { createApp, type AppDeps } from '../../src/server/app.js';
 import type { LedgerStore } from '../../src/store/interface.js';
 import { MemoryStore } from '../../src/store/memory/store.js';
@@ -32,6 +33,24 @@ export function makeApp(over: Partial<AppDeps> = {}) {
   const processed = over.processed ?? new InMemoryProcessedTextStore({ now: clock.now });
   const app = createApp({ store, pending, processed, now: clock.now, ...over });
   return { app, clock, store, pending, processed };
+}
+
+/** A shop on a demo number, the way `POST /api/phone/demo` leaves one (without the invented records). */
+export async function addDemoShop(store: LedgerStore, phone = DEMO_PHONE, name = "Thandi's Spaza"): Promise<void> {
+  await store.createShop({
+    ...createShop({ name, phone, currency: 'ZAR', timeZone: 'Africa/Johannesburg' }),
+    createdAt: START
+  });
+}
+
+/**
+ * `makeApp`, with a shop already on each of the given demo numbers. The browser phone's ussd and sms routes answer
+ * 404 for a number with no shop, so a test that wants them to reach a handler needs one.
+ */
+export async function makeShopApp(over: Partial<AppDeps> = {}, phones: string[] = [DEMO_PHONE]) {
+  const made = makeApp(over);
+  for (const phone of phones) await addDemoShop(made.store, phone);
+  return made;
 }
 
 export function formBody(fields: Record<string, string | undefined>): URLSearchParams {
@@ -79,7 +98,8 @@ export function throwingStore(message = 'the store must not be used here'): Ledg
     findRecordById: boom,
     findReversalOf: boom,
     listRecords: boom,
-    countShopsWithPhonePrefix: boom
+    countShopsWithPhonePrefix: boom,
+    deleteExpiredDemoShops: boom
   } as unknown as LedgerStore;
 }
 

@@ -191,6 +191,31 @@ describePostgres('Postgres table rules', (db) => {
   });
 });
 
+describePostgres('Postgres table rules: demo_quota (002_demo_quota.sql)', (db) => {
+  beforeEach(async () => {
+    await db().truncate();
+  });
+
+  const insert = (hash: string, kind = 'call') =>
+    db().sql`insert into demo_quota (address_hash, kind, happened_at) values (${hash}, ${kind}, ${NOW}::timestamptz)`;
+
+  it('accepts a SHA-256 hash in lower-case hex', async () => {
+    await insert('a'.repeat(64));
+    expect(await db().sql`select count(*)::int as n from demo_quota`).toEqual([{ n: 1 }]);
+  });
+
+  it.each(['203.0.113.7', 'unknown', '2001:db8::1', '', 'A'.repeat(64), 'a'.repeat(63), 'a'.repeat(65), 'g'.repeat(64)])(
+    'refuses %j, so a raw address can never be kept',
+    async (value) => {
+      await expect(insert(value)).rejects.toMatchObject({ code: '23514' });
+    }
+  );
+
+  it('refuses a kind other than call or made', async () => {
+    await expect(insert('a'.repeat(64), 'visit')).rejects.toMatchObject({ code: '23514' });
+  });
+});
+
 // The migration needs a schema with nothing in it, so it makes its own.
 describePostgres(
   'Postgres migration',
@@ -200,16 +225,16 @@ describePostgres(
       const fresh = await createTestDatabase(url, { migrate: false });
       try {
         const first = await applyMigrations(fresh.sql, SQL_DIR);
-        expect(first).toEqual(['001_init.sql']);
+        expect(first).toEqual(['001_init.sql', '002_demo_quota.sql']);
         const second = await applyMigrations(fresh.sql, SQL_DIR);
         expect(second).toEqual([]);
         const noted = await fresh.sql`select name from schema_migrations order by name`;
-        expect(noted.map((r) => r.name)).toEqual(['001_init.sql']);
+        expect(noted.map((r) => r.name)).toEqual(['001_init.sql', '002_demo_quota.sql']);
         const tables = await fresh.sql`
           select table_name from information_schema.tables
           where table_schema = ${fresh.schema} order by table_name`;
         expect(tables.map((t) => t.table_name)).toEqual([
-          'pending_questions', 'processed_texts', 'records', 'schema_migrations', 'shops'
+          'demo_quota', 'pending_questions', 'processed_texts', 'records', 'schema_migrations', 'shops'
         ]);
       } finally {
         await fresh.drop();

@@ -138,7 +138,6 @@ that the film-grain image has none to hold.
   --core:         #FFFDF8;                   /* inner core fill */
   --highlight:    rgba(255, 255, 255, 0.7);  /* soft inset highlight */
   --pill-tint:    #EEF1E6;                   /* eyebrow pill fill */
-  --on-ink:       var(--paper);
 
   /* Primary button: a mid-tone sage fill, lighter than --call (L 0.354 against 0.226). Light theme: no dark fill. */
   --primary-fill:  #8FA87F;                  /* ink label on it 5.94:1 (needs 4.5); fill on paper 2.45:1, on core 2.56:1 */
@@ -228,7 +227,8 @@ that the film-grain image has none to hold.
 | sage-deep on pill-tint | 6.08 | eyebrow text |
 | clay on paper | 4.70 | counter near limit |
 | clay on core | 4.91 | undone label, errors in the card |
-| paper on ink | 14.56 | skip link (shown only on focus) |
+| ink on core | 15.19 | skip link text (shown only on focus; filled with `--core`) |
+| focus ring (sage-deep) on core | 6.84 | skip link ring, 2 px (6.56 on paper) |
 | ink on primary-fill | 5.94 | primary button label, needs 4.5 |
 | ink arrow on on-primary-tint circle (`#CAD4BE`) | 10.06 | primary button arrow, needs 3 |
 | on-primary-tint circle on primary-fill | 1.69 | the circle's own edge; the arrow is what carries meaning |
@@ -284,7 +284,7 @@ background-image: url("data:image/svg+xml,...feTurbulence..."); background-size:
 
 ```
 body
-├─ a.skip                          "Skip to the ledger" -> #ledger
+├─ a.skip                          "Skip to the ledger" -> #ledger (on focus: core fill, ink text, --focus ring)
 ├─ noscript
 └─ main#main.page
    ├─ section.intro.reveal         eyebrow pill, h1, p                      (grid area: intro)
@@ -633,10 +633,12 @@ is no cookie. The api helper never logs request bodies.
 
 ### `ledger.js`
 
-`initLedger({ root, api, storage, random, onShop })` returns `{ refresh(), phone() }`.
+`initLedger({ root, api, storage, random, onShop })` returns `{ refresh(), forget(phone), phone(), timeZone() }`.
 
 - On load: read the number from `storage` (key `imali-demo-phone`) and check it with `isDemoPhone`. No number:
-  first-visit state. A number: `GET /api/ledger`; 404 forgets the number (requirement 81).
+  first-visit state. A number: `GET /api/ledger`; 404 forgets the number (requirement 81). `initLedger` also returns
+  `forget(phone)`: `phone.js` calls it when `POST /api/phone/ussd` or `/sms` answers 404 (`isShopGone(error)` in `api.js`,
+  requirement 107), and it does the same as the 404 above if the number is still the page's own.
 - `startDemo()`: pick up to three numbers with `crypto.getRandomValues` (`value % 10000`; the bias of 7296 in 2^32 is
   negligible for a demo). `POST /api/phone/demo`; 409 tries the next number; success stores the number, calls
   `onShop(phone)` and `refresh()`.
@@ -683,7 +685,7 @@ Holds the `State`, an `Editor` timer and the current effect handlers.
 | Counter over limit | `... - over the limit` in clay | `chars > limit` (a server bug made visible) |
 | Empty ledger | `No records yet.`, `Nobody owes money.` | not on a fresh demo shop (it starts with invented records); only when the answer has empty lists (DevTools override, or a test) |
 | Unknown code | `Unknown code. Try *384*46254#.` under the hint | non-empty dial line that is not the code |
-| Stale number | quietly the first-visit state | 404 on load |
+| Stale number | quietly the first-visit state | 404 on load, or 404 from the ussd or sms route (requirement 107) |
 | Storage blocked | works for the visit, number lost on reload | `localStorage` throws |
 | Reduced motion | no animation, every section and line at once | `prefers-reduced-motion: reduce` |
 | No JavaScript | `<noscript>` line | script not run |

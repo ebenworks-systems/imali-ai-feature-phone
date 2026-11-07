@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryProcessedTextStore } from '../../src/store/processed.js';
 import { SENTENCES } from '../../src/server/constants.js';
-import { captureErrors, makeApp, postForm, throwingStore } from './helpers.js';
+import { captureErrors, makeApp, makeShopApp, postForm, throwingStore } from './helpers.js';
 
 vi.mock('../../src/channels/index.js', () => ({
   handleUssd: vi.fn(),
@@ -166,7 +166,9 @@ describe('POST /sms', () => {
     const arg = textMock.mock.calls[0]![0];
     expect(arg).toMatchObject({ phone: '+27000001234', text: 'sold 3 bread 45', now: new Date('2026-11-07T10:00:00.000Z') });
     expect(arg.pending).toBe(pending);
-    expect(arg.reader).toBe(reader);
+    // The reader is wrapped in the ceiling on model calls, so it is not the same object, but it asks the same reader.
+    await arg.reader!.read('some words');
+    expect(reader.read).toHaveBeenCalledWith('some words');
     expect(typeof arg.store.findShopByPhone).toBe('function');
   });
 
@@ -426,7 +428,7 @@ describe('POST /sms', () => {
     it('makes no claim for POST /api/phone/sms', async () => {
       const processed = new InMemoryProcessedTextStore();
       const claim = vi.spyOn(processed, 'claim');
-      const { app } = makeApp({ processed });
+      const { app } = await makeShopApp({ processed });
       const body = JSON.stringify({ phone: '+27000001234', text: 'today', id: 'ATXid_1' });
       await app.request('/api/phone/sms', { method: 'POST', body, headers: { 'Content-Type': 'application/json' } });
       await app.request('/api/phone/sms', { method: 'POST', body, headers: { 'Content-Type': 'application/json' } });

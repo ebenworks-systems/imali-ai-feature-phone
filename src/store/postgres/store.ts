@@ -17,6 +17,7 @@ import type { Sql } from 'postgres';
 import type { Currency } from '../../core/money/currency.js';
 import type { Channel, Record, RecordKind, ReversalRecord } from '../../core/records/types.js';
 import type { Shop } from '../../core/shops/types.js';
+import { DEMO_PHONE_SQL_PATTERN, MAX_DEMO_SHOPS_PER_SWEEP } from '../demo.js';
 import {
   DuplicateRecordError,
   RecordAlreadyReversedError,
@@ -248,6 +249,40 @@ export class PostgresStore implements LedgerStore {
     const rows = await this.sql<Array<{ n: number | string }>>`
       select count(*)::int as n from shops where starts_with(phone, ${prefix})`;
     return toSafeInt(rows[0]?.n ?? 0);
+  }
+
+  /**
+   * Housekeeping of invented demo data, in one transaction: the oldest demo shops made before `createdBefore` (at
+   * most `maxShops`), their pending questions, their records and then the shops themselves.
+   *
+   * The demo test is `phone ~ DEMO_PHONE_SQL_PATTERN`, written in this method and not taken from the caller, and it
+   * is repeated on the final `delete from shops`, so no statement here can remove a shop on another number. Records
+   * are removed only by `shop_id` of those shops, all of them in one statement (the foreign keys between a shop's own
+   * records are checked at the end of the statement). The selected shops are locked `for update`, so a record being
+   * added to one of them waits and then fails on the foreign key rather than being half kept.
+   */
+  async deleteExpiredDemoShops(createdBefore: Date, maxShops: number): Promise<string[]> {
+    const cutoff = createdBefore.getTime();
+    const limit = Number.isFinite(maxShops) ? Math.min(Math.max(0, Math.floor(maxShops)), MAX_DEMO_SHOPS_PER_SWEEP) : 0;
+    if (!Number.isFinite(cutoff) || limit === 0) return [];
+    const before = createdBefore.toISOString();
+
+    return await this.sql.begin(async (tx) => {
+      const shops = await tx<Array<{ id: string; phone: string }>>`
+        select id, phone from shops
+        where phone ~ ${DEMO_PHONE_SQL_PATTERN} and created_at < ${before}::timestamptz
+        order by created_at, id
+        limit ${limit}
+        for update`;
+      if (shops.length === 0) return [];
+      const ids = shops.map((shop) => shop.id);
+      const phones = shops.map((shop) => shop.phone);
+
+      await tx`delete from pending_questions where phone in ${tx(phones)}`;
+      await tx`delete from records where shop_id in ${tx(ids)}`;
+      await tx`delete from shops where id in ${tx(ids)} and phone ~ ${DEMO_PHONE_SQL_PATTERN}`;
+      return phones;
+    });
   }
 }
 

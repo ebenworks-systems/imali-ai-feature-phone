@@ -376,5 +376,26 @@ again.") and the `length` field of the ussd and sms answers (the counter never s
     on fill 1.69:1, fill on paper 2.45:1. The ratios sit beside the tokens in `styles.css`, and the token block and
     contrast table in `design.md` match. `--on-ink-tint` is removed (nothing else used it). Hover (arrow nudge),
     `:focus-visible` ring (`--focus`), `aria-disabled` (opacity 0.45) and `aria-busy` are unchanged. The phone body,
-    keys, LCD and every other colour are unchanged. The skip link still uses `--ink` and `--on-ink`; it is hidden
-    until it gets keyboard focus, and it was outside this change.
+    keys, LCD and every other colour are unchanged. The skip link still used `--ink` and `--on-ink` then; it is hidden
+    until it gets keyboard focus, and it was outside this change (task 65 changed it).
+
+- [x] 64. **A 404 from the dialled menu or the texts returns the page to the first-visit state**
+  - Files: `public/api.js`, `public/ledger.js`, `public/phone.js`, `test/public/api.test.ts`, `test/integration/page-contract.test.ts`, `docs/judges.md`
+  - Requirements: 63, 81, 107
+  - The server's ussd and sms routes no longer sign a new owner up for a demo number with no shop; they answer 404 (server-and-store
+    task 11.1). `api.js` exports `isShopGone(error)` (an `ApiError` of kind `http` with status 404); `ledger.js` uses it for the
+    ledger call and returns `forget(phone)`; `phone.js` calls `ledger.forget(body.phone)` when `runUssd` or `runSms` meets it
+    and shows nothing else (no "No network" line). `forget` ignores a number that is no longer the page's own. Tests:
+    `isShopGone` for 404 on the three routes and not for 400, 409, 429, 500, 503, a network failure or a non-`ApiError`;
+    the page-contract test reads the real app's 404 for the ledger, ussd and sms routes of a number with no shop and
+    the 200 of a number with one. `docs/judges.md` ("Stale number") says what the judge sees.
+
+- [x] 65. **Skip link: the light core fill instead of --ink**
+  - Files: `public/styles.css`, `test/public/skip-link.test.ts`, `.kiro/specs/browser-phone/design.md`
+  - Requirements: 3, 108
+  - The design rule is a light theme with no dark filled area of any size. `a.skip` was filled with `--ink` (`#2A2320`) when it showed on
+    keyboard focus. It now has `background: var(--core)`, `color: var(--ink)` and `outline: 2px solid var(--focus)` with
+    `outline-offset: 0`. Measured: ink on core 15.19:1 (needs 4.5), focus ring on paper 6.56:1 and on core 6.84:1. The ratios
+    sit above the rule in `styles.css`; the contrast table in `design.md` matches. `--on-ink` had no other user and is removed.
+    Test: `test/public/skip-link.test.ts` reads `styles.css`, resolves the tokens and fails on the old rule (dark fill,
+    `--on-ink`, no ring), and checks the ratios.

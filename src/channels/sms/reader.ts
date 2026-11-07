@@ -55,6 +55,8 @@ export interface AmbiguousIntent {
   kind: 'ambiguous';
   options: Array<{ cents: number; quantity?: number }>;
   base: { kind: 'sale' | 'expense' };
+  /** The item the owner typed ("bread"). Kept through the question, so either answer saves it. */
+  item?: string;
 }
 
 export interface SimpleIntent {
@@ -103,7 +105,8 @@ function askTwoNumbers(
   firstText: string,
   secondText: string,
   firstCents: number,
-  secondCents: number
+  secondCents: number,
+  item?: string
 ): AmbiguousIntent {
   const asCount = (text: string): { quantity?: number } => {
     const count = /^\d+$/.test(text) ? Number(text) : 0;
@@ -115,7 +118,8 @@ function askTwoNumbers(
       { cents: firstCents, ...asCount(secondText) },
       { cents: secondCents, ...asCount(firstText) }
     ],
-    base: { kind: 'sale' }
+    base: { kind: 'sale' },
+    ...(item ? { item } : {})
   };
 }
 
@@ -231,14 +235,16 @@ function trySale(text: string, currency: Currency): SaleIntent | AmbiguousIntent
             quantity: potentialQty
           };
         } else if (result.type === 'ambiguous') {
-          // Ambiguous amount with item - return as ambiguous intent
+          // Ambiguous amount with item - return as ambiguous intent, and keep the item for either answer
+          const itemPart = w.slice(2, i).join(' '); // normalized (lowercase)
           return {
             kind: 'ambiguous',
             options: result.possibleAmounts.map(amt => ({
               cents: amt.cents,
               quantity: potentialQty
             })),
-            base: { kind: 'sale' }
+            base: { kind: 'sale' },
+            ...(itemPart ? { item: itemPart } : {})
           };
         }
       }
@@ -257,7 +263,14 @@ function trySale(text: string, currency: Currency): SaleIntent | AmbiguousIntent
         if (i === 2 && i < w.length - 1) {
           const first = parseAmount(wPreserve[1], currency);
           if (first.type === 'success') {
-            return askTwoNumbers(wPreserve[1], wPreserve[2], first.amount.cents, result.amount.cents);
+            // The words after the second number are the item (normalized, lower case), whichever answer is picked.
+            return askTwoNumbers(
+              wPreserve[1],
+              wPreserve[2],
+              first.amount.cents,
+              result.amount.cents,
+              w.slice(3).join(' ')
+            );
           }
         }
         // "sold bread 45": the item is before the amount.

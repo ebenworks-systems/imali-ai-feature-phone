@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { createShop } from '../../src/core/shops/types.js';
 import { createReversal, createSaleRecord } from '../../src/core/records/types.js';
 import { DuplicateRecordError } from '../../src/store/interface.js';
-import { RecordLimitError, withRecordLimit } from '../../src/store/limit.js';
+import {
+  RecordLimitError,
+  ShopCreationNotAllowedError,
+  ShopLimitError,
+  withoutShopCreation,
+  withRecordLimit,
+  withShopLimit
+} from '../../src/store/limit.js';
 import { MemoryStore } from '../../src/store/memory/store.js';
 
 const NOW = new Date('2026-11-07T10:00:00.000Z');
@@ -70,5 +77,81 @@ describe('withRecordLimit', () => {
     const store = withRecordLimit(inner, 5);
     await store.listRecords('x', { since: '2026-01-01T00:00:00.000Z' });
     expect(spy).toHaveBeenCalledWith('x', { since: '2026-01-01T00:00:00.000Z' });
+  });
+});
+
+const shopOn = (phone: string, id?: string) =>
+  createShop({ id, name: 'Shop', phone, currency: 'ZAR', timeZone: 'Africa/Johannesburg' });
+
+describe('withShopLimit', () => {
+  it('accepts shops that are not demo shops up to the cap and refuses the next with ShopLimitError', async () => {
+    const inner = new MemoryStore();
+    const store = withShopLimit(inner, 2);
+    await store.createShop(shopOn('+254711000001'));
+    await store.createShop(shopOn('+254711000002'));
+    await expect(store.createShop(shopOn('+254711000003'))).rejects.toThrow(ShopLimitError);
+    await expect(store.createShop(shopOn('+254711000003'))).rejects.toMatchObject({ name: 'ShopLimitError' });
+    expect(await inner.findShopByPhone('+254711000003')).toBeNull();
+    expect(await inner.countShopsWithPhonePrefix('')).toBe(2);
+  });
+
+  it('does not count demo shops toward the cap, and does not stop a demo shop being made', async () => {
+    const inner = new MemoryStore();
+    const store = withShopLimit(inner, 1);
+    await store.createShop(shopOn('+27000001234'));
+    await store.createShop(shopOn('+27000005678'));
+    await store.createShop(shopOn('+254711000001'));
+    await expect(store.createShop(shopOn('+254711000002'))).rejects.toThrow(ShopLimitError);
+    await store.createShop(shopOn('+27000009999')); // a demo number is not held back by the cap on the others
+  });
+
+  it('refuses a number that starts like a demo number but is not a whole one, so it cannot slip past both caps', async () => {
+    const inner = new MemoryStore();
+    const store = withShopLimit(inner, 1);
+    for (const phone of ['+270000012345', '+2700000123', '+2700000']) {
+      await expect(store.createShop(shopOn(phone)), phone).rejects.toThrow(ShopLimitError);
+      expect(await inner.findShopByPhone(phone)).toBeNull();
+    }
+    // A number in the same country that is outside the demo range is an ordinary shop.
+    await store.createShop(shopOn('+27000111111'));
+    await expect(store.createShop(shopOn('+27000222222'))).rejects.toThrow(ShopLimitError);
+  });
+
+  it('lets a repeat of a sign-up that already worked through at the cap, so the store answers it as before', async () => {
+    const store = withShopLimit(new MemoryStore(), 1);
+    const shop = shopOn('+254711000001', 'shop_ussd_S1');
+    await store.createShop(shop);
+    await expect(store.createShop(shop)).rejects.toMatchObject({ name: 'ShopAlreadyExistsError' });
+    await expect(store.createShop(shopOn('+254711000001', 'shop_ussd_S2'))).rejects.toMatchObject({
+      name: 'ShopAlreadyExistsError'
+    });
+    await expect(store.createShop(shopOn('+254711000009', 'shop_ussd_S1'))).rejects.toMatchObject({
+      name: 'ShopAlreadyExistsError'
+    });
+  });
+
+  it('passes every other call straight through', async () => {
+    const store = withShopLimit(new MemoryStore(), 1);
+    const shop = shopOn('+254711000001');
+    await store.createShop(shop);
+    expect(await store.findShopByPhone('+254711000001')).toEqual(shop);
+    expect(await store.findShopById(shop.id)).toEqual(shop);
+    expect(await store.deleteExpiredDemoShops(new Date('2100-01-01'), 200)).toEqual([]);
+  });
+});
+
+describe('withoutShopCreation', () => {
+  it('refuses to make a shop, writes nothing, and passes reads and records through', async () => {
+    const inner = new MemoryStore();
+    const existing = shopOn('+27000001234');
+    await inner.createShop(existing);
+    const store = withoutShopCreation(inner);
+
+    await expect(store.createShop(shopOn('+27000005678'))).rejects.toThrow(ShopCreationNotAllowedError);
+    expect(await inner.findShopByPhone('+27000005678')).toBeNull();
+
+    expect(await store.findShopByPhone('+27000001234')).toEqual(existing);
+    await store.appendRecord(createSaleRecord(existing.id, { id: 'r1', amount: 100, channel: 'web', originalWords: 'x', now: NOW }));
+    expect(await inner.listRecords(existing.id)).toHaveLength(1);
   });
 });

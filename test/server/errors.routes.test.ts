@@ -73,24 +73,20 @@ describe('a store that throws a database-looking error', () => {
     ['POST /api/phone/demo', (app: Parameters<typeof postJson>[0]) => postJson(app, '/api/phone/demo', { phone: DEMO_PHONE })],
     ['GET /api/ledger', (app: { request: (p: string) => Response | Promise<Response> }) => app.request(`/api/ledger?phone=${encodeURIComponent(DEMO_PHONE)}`)],
     ['GET /api/export', (app: { request: (p: string) => Response | Promise<Response> }) => app.request(`/api/export?phone=${encodeURIComponent(DEMO_PHONE)}`)]
-  ])('%s: the menu or the route answers with a plain sentence and leaks nothing', async (name, call) => {
+  ])('%s: the route answers with a plain sentence and leaks nothing', async (_name, call) => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { app } = makeApp({ store: failingStore() });
     const res = await call(app as never);
     const text = await everything(res);
     expectNoLeak(text);
     expect(logged(log)).toContain(SECRET_MESSAGE);
-    if (name === 'POST /api/phone/ussd') {
-      // The menu catches the error itself and shows its own plain sentence.
-      expect(res.status).toBe(200);
-      expect(text).toMatch(/END Sorry, something went wrong/);
-    } else {
-      expect(res.status).toBe(500);
-      expect(text).toContain(`"error":"${GENERIC}"`);
-      const line = JSON.parse(logged(log).split('\n')[0]!);
-      expect(line.stack).toContain(SECRET_MESSAGE);
-      expect(line.route).toMatch(/^\/api\//);
-    }
+    // The ussd and sms routes look the shop up themselves (a number with no shop is refused before the handler runs),
+    // so a store that fails on that lookup gives the same plain 500 on every browser route.
+    expect(res.status).toBe(500);
+    expect(text).toContain(`"error":"${GENERIC}"`);
+    const line = JSON.parse(logged(log).split('\n')[0]!);
+    expect(line.stack).toContain(SECRET_MESSAGE);
+    expect(line.route).toMatch(/^\/api\//);
   });
 
   it('puts neither the message nor a stack in a header, on any route', async () => {

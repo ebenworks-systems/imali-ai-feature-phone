@@ -257,8 +257,8 @@ integer) and writes its own text from it with `formatMoney`; it never shows the 
 
 ### States and errors
 
-63. IF a request fails, times out after 10 seconds, answers with a non-2xx status, or answers with something that is
-    not JSON, THEN THE LCD SHALL show "No network. Try again." and: in a session, the session SHALL end as an `END`
+63. IF a request fails, times out after 10 seconds, answers with a non-2xx status (except the 404 of requirement 107), or
+    answers with something that is not JSON, THEN THE LCD SHALL show "No network. Try again." and: in a session, the session SHALL end as an `END`
     screen would (requirement 42); in Messages, the phone SHALL remove the unsent message from the thread, add the
     line "No network. Try again." to the thread, and, if Messages is still open with an empty compose line, put the
     message text back in the compose line.
@@ -448,6 +448,22 @@ against the `server-and-store` and `dialled-menu` specs. The page needs only a o
 - **A3.** The dialled menu works out `0` (back one screen) and `00` (main menu) from the raw path, as the network
   would send it, because only the server knows its screens.
 - **A4.** A non-2xx answer from the ussd or sms route carries nothing the owner should see, so the page shows its own
-  "No network. Try again."
+  "No network. Try again." The one exception is 404, which means the server has no demo shop on the number
+  (requirement 107).
 - **A5.** `GET /api/export?phone=` answers 200 with JSON for a demo shop, and `GET /` serves `public/index.html` with
   its files beside it.
+
+### Added after the second review (before the live demo went public)
+
+107. WHEN `POST /api/phone/ussd` or `POST /api/phone/sms` answers 404 (the server has no demo shop on the number: the
+     shop was never made or was cleared away, because demo shops last about a week), THE page SHALL treat it as it treats a
+     404 from `GET /api/ledger` in requirement 81: forget the number, empty the phone and the ledger card, and show the
+     first-visit state ("Press Start demo shop"). It SHALL do this quietly, with no "No network" line and no error
+     message, and only if the number is still the page's own number. The routes no longer make a shop for a number
+     that has none, so this is how a stale number is found when the owner dials or sends before the ledger refreshes.
+
+108. THE skip link ("Skip to the ledger"), when it shows on keyboard focus, SHALL be filled with the light core fill
+     (`--core`), with `--ink` text and the `--focus` ring (2 px, `outline-offset: 0`), at 4.5:1 or better for the text and
+     for the ring against the page. It SHALL NOT be filled with `--ink` or any dark colour: the design rule is no dark
+     filled area of any size (requirement 3 and the primary button, task 63). The token `--on-ink` SHALL be removed with
+     its last user.

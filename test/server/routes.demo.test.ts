@@ -153,11 +153,31 @@ describe('the per-address limit: 10 calls an hour', () => {
     expect((await post(app, { phone: '+27000001002' }, { 'x-forwarded-for': '198.51.100.9' })).status).toBe(201);
   });
 
-  it('takes the first entry of x-forwarded-for as the address', async () => {
+  it('takes the last entry of x-forwarded-for as the address: what a caller writes at the front changes nothing', async () => {
     const { app } = makeApp({ demoLimits: { perAddress: 1 } });
-    expect((await post(app, { phone: '+27000001001' }, { 'x-forwarded-for': '203.0.113.7, 10.0.0.1' })).status).toBe(201);
-    expect((await post(app, { phone: '+27000001002' }, { 'x-forwarded-for': '203.0.113.7, 10.0.0.2' })).status).toBe(429);
-    expect((await post(app, { phone: '+27000001002' }, { 'x-forwarded-for': '10.0.0.1, 203.0.113.7' })).status).toBe(201);
+    expect((await post(app, { phone: '+27000001001' }, { 'x-forwarded-for': '1.1.1.1, 203.0.113.7' })).status).toBe(201);
+    // The same connecting address (the entry the platform added) with another made-up front is still the same address.
+    expect((await post(app, { phone: '+27000001002' }, { 'x-forwarded-for': '2.2.2.2, 203.0.113.7' })).status).toBe(429);
+    expect((await post(app, { phone: '+27000001002' }, { 'x-forwarded-for': '203.0.113.7' })).status).toBe(429);
+    // Another connecting address is another key, whatever the front says.
+    expect((await post(app, { phone: '+27000001002' }, { 'x-forwarded-for': '203.0.113.7, 198.51.100.9' })).status).toBe(201);
+  });
+
+  it('cannot be walked past by writing a new x-forwarded-for each time', async () => {
+    const { app } = makeApp({ demoLimits: { perAddress: 3 } });
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      statuses.push((await post(app, {}, { 'x-forwarded-for': `198.51.100.${i}, 203.0.113.7` })).status);
+    }
+    expect(statuses).toEqual([201, 201, 201, 429, 429, 429]);
+  });
+
+  it('prefers x-real-ip to x-forwarded-for', async () => {
+    const { app } = makeApp({ demoLimits: { perAddress: 1 } });
+    const real = { 'x-real-ip': '192.0.2.5' };
+    expect((await post(app, {}, { ...real, 'x-forwarded-for': '10.0.0.1' })).status).toBe(201);
+    expect((await post(app, {}, { ...real, 'x-forwarded-for': '10.0.0.2' })).status).toBe(429);
+    expect((await post(app, {}, { 'x-real-ip': '192.0.2.6', 'x-forwarded-for': '10.0.0.1' })).status).toBe(201);
   });
 
   it('works again after 61 minutes', async () => {
@@ -192,7 +212,7 @@ describe('the per-address limit: 10 calls an hour', () => {
     expect((await post(app, {}, FIRST)).status).toBe(201);
   });
 
-  it('falls back to x-real-ip', async () => {
+  it('uses x-real-ip when there is no x-forwarded-for', async () => {
     const { app } = makeApp({ demoLimits: { perAddress: 1 } });
     expect((await post(app, {}, { 'x-real-ip': '192.0.2.5' })).status).toBe(201);
     expect((await post(app, {}, { 'x-real-ip': '192.0.2.5' })).status).toBe(429);

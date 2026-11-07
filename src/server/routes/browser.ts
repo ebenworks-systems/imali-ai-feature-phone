@@ -2,8 +2,13 @@
  * The routes the browser phone and its side panel call: /api/phone/ussd, /api/phone/sms, /api/phone/demo,
  * GET /api/ledger and GET /api/export.
  *
- * Every one works on a demo number only (`+2700000` and four digits), and every one except the demo route that
- * names no phone is limited to 60 requests a minute per phone number.
+ * Every one works on a demo number only (`+2700000` and four digits). Every one except the demo route that names no
+ * phone is limited to 60 requests a minute per phone number, and every one (createApp's middleware) to 120 a minute
+ * per client address.
+ *
+ * Only `POST /api/phone/demo` makes demo shops. The ussd and sms routes answer 404 for a demo number with no shop,
+ * before any handler runs, and hand the handlers a store that cannot make a shop, so the dialled menu's and the
+ * texts' sign-up can never run from here.
  */
 
 import { randomInt, randomUUID } from 'node:crypto';
@@ -14,13 +19,17 @@ import type { App, AppContext, AppEnv } from '../context.js';
 import {
   DEMO_PHONE_PREFIX,
   DEMO_SERVICE_CODE,
+  DEMO_SWEEP_PER_CALL,
   MAX_MENU_INPUT,
   MAX_SMS_TEXT,
   SENTENCES,
   SMS_REPLY_LIMIT
 } from '../constants.js';
+import { addressKey } from '../address.js';
 import { buildDemoRecords, buildDemoShop } from '../demo.js';
+import { logError } from '../errors.js';
 import { clientAddress, isDemoPhone, normalizePhone } from '../phone.js';
+import { DEMO_SHOP_MAX_AGE_MS } from '../../store/demo.js';
 import { refuse } from '../respond.js';
 import { buildLedgerView } from '../views.js';
 
@@ -68,6 +77,23 @@ function badBody(c: C): Response {
   return refuse(c, 400, SENTENCES.badBody);
 }
 
+/**
+ * Housekeeping of invented demo data: removes the demo shops made more than 7 days ago (at most 200 a call), with their
+ * records and waiting questions, so the cap on demo shops frees itself. The store decides what a demo shop is, so
+ * this can never remove a shop on another number, and it never removes a single record. A failure is logged and does
+ * not stop the call: the housekeeping is not what the caller asked for.
+ */
+async function sweepOldDemoShops(ctx: AppContext): Promise<void> {
+  try {
+    const cutoff = new Date(ctx.now().getTime() - DEMO_SHOP_MAX_AGE_MS);
+    const phones = await ctx.store.deleteExpiredDemoShops(cutoff, DEMO_SWEEP_PER_CALL);
+    // The store removes the questions it keeps itself (Postgres); the memory pending store is a separate object.
+    for (const phone of phones) await ctx.pending.clear(phone);
+  } catch (error) {
+    logError('/api/phone/demo sweep', error);
+  }
+}
+
 export function registerBrowserRoutes(app: App, ctx: AppContext): void {
   // ---------------------------------------------------------------- the dialled menu
   app.post('/api/phone/ussd', async (c) => {
@@ -82,13 +108,16 @@ export function registerBrowserRoutes(app: App, ctx: AppContext): void {
     const typed = text ?? '';
     if ((typed.split('*').pop() ?? '').length > MAX_MENU_INPUT) return refuse(c, 400, SENTENCES.menuLong);
 
+    // A demo number with no shop is refused here, before the menu runs: the menu would sign a new owner up.
+    if (!(await ctx.store.findShopByPhone(phone))) return refuse(c, 404, SENTENCES.noDemoShop);
+
     const { response } = await handleUssd({
       sessionId: sessionId && sessionId !== '' ? sessionId : randomUUID(),
       serviceCode: DEMO_SERVICE_CODE,
       phoneNumber: phone,
       text: typed,
       now: ctx.now(),
-      store: ctx.store
+      store: ctx.browserStore
     });
     return c.json({ response, length: response.slice(4).length, limit: MAX_MENU_INPUT });
   });
@@ -102,11 +131,14 @@ export function registerBrowserRoutes(app: App, ctx: AppContext): void {
     if (typeof phone !== 'string') return phone;
     if (body.text.length > MAX_SMS_TEXT) return refuse(c, 400, SENTENCES.smsLong);
 
+    // A demo number with no shop is refused here, before the text handler runs: it would sign a new owner up.
+    if (!(await ctx.store.findShopByPhone(phone))) return refuse(c, 404, SENTENCES.noDemoShop);
+
     const { reply } = await handleText({
       phone,
       text: body.text,
       now: ctx.now(),
-      store: ctx.store,
+      store: ctx.browserStore,
       pending: ctx.pending,
       ...(ctx.reader ? { reader: ctx.reader } : {})
     });
@@ -115,10 +147,12 @@ export function registerBrowserRoutes(app: App, ctx: AppContext): void {
 
   // ---------------------------------------------------------------- the demo shop
   app.post('/api/phone/demo', async (c) => {
-    // 1. Ten calls an hour per client address. Every call counts. Nothing is read or written for a refusal.
-    const address = ctx.demoLimiter.check(clientAddress(c.req.raw.headers));
-    if (!address.allowed) {
-      return refuse(c, 429, SENTENCES.demoRate, { 'Retry-After': String(address.retryAfterSeconds) });
+    // 1. Ten calls an hour per client address, counted in the store so it holds across instances. The address is
+    //    kept only as a salted SHA-256 hash. Every call counts. Nothing about a shop is read or written for a refusal.
+    const address = addressKey(clientAddress(c.req.raw.headers), ctx.addressSalt);
+    const claim = await ctx.quota.claimCall(address, { limit: ctx.demoPerAddress, windowMs: ctx.demoWindowMs });
+    if (!claim.allowed) {
+      return refuse(c, 429, SENTENCES.demoRate, { 'Retry-After': String(claim.retryAfterSeconds) });
     }
 
     // 2. The body: `{ phone? }`, and an empty body counts as `{}`.
@@ -137,12 +171,16 @@ export function registerBrowserRoutes(app: App, ctx: AppContext): void {
       if (refused) return refused;
     }
 
-    // 4. At most 5,000 demo shops in all (counted in the store, so it holds across instances).
+    // 4. Clear away the demo shops made more than 7 days ago (a bounded number), so the cap below frees itself.
+    await sweepOldDemoShops(ctx);
+
+    // 5. At most 1,000 demo shops a day in all (counted in the store), and at most 5,000 in all (likewise).
+    if ((await ctx.quota.madeToday()) >= ctx.maxDemoShopsPerDay) return refuse(c, 503, SENTENCES.demoFull);
     if ((await ctx.store.countShopsWithPhonePrefix(DEMO_PHONE_PREFIX)) >= ctx.maxDemoShops) {
       return refuse(c, 503, SENTENCES.demoFull);
     }
 
-    // 5. Choose the number.
+    // 6. Choose the number.
     if (phone !== undefined) {
       if (await ctx.store.findShopByPhone(phone)) return refuse(c, 409, SENTENCES.taken);
     } else {
@@ -154,7 +192,7 @@ export function registerBrowserRoutes(app: App, ctx: AppContext): void {
     }
     c.set('phone', phone);
 
-    // 6. Make the shop and its invented records, in order.
+    // 7. Make the shop and its invented records, in order.
     const now = ctx.now();
     const shop = buildDemoShop(phone, now);
     try {
@@ -167,6 +205,7 @@ export function registerBrowserRoutes(app: App, ctx: AppContext): void {
     for (const record of buildDemoRecords(shop, now)) {
       await ctx.store.appendRecord(record);
     }
+    await ctx.quota.noteMade(address);
     return c.json({ phone, shop: { name: shop.name, currency: shop.currency, timeZone: shop.timeZone } }, 201);
   });
 

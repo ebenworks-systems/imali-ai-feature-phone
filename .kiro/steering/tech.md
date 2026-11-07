@@ -37,19 +37,24 @@ test/           Vitest tests, mirroring src/
 - `POST /sms`: Africa's Talking incoming SMS callback (form fields `from`, `to`, `text`, `date`, `id`). Replies by
   sending an SMS through Africa's Talking when its credentials are set; always returns the reply text in the body
   so the browser phone and tests can read it.
-- `POST /api/phone/ussd` and `POST /api/phone/sms`: JSON versions of the same two calls for the browser phone.
-- `POST /api/phone/demo`: makes a demo shop with invented records (10 a hour per client address, 5,000 in all).
+- `POST /api/phone/ussd` and `POST /api/phone/sms`: JSON versions of the same two calls for the browser phone. A demo
+  number with no shop gets 404 and nothing is written; only `POST /api/phone/demo` makes demo shops.
+- `POST /api/phone/demo`: makes a demo shop with invented records (10 a hour per client address, 1,000 a day and 5,000
+  in all, counted in the store). First it clears away the demo shops made more than 7 days ago (housekeeping of invented
+  data; never a shop on another number, never a single record).
 - `GET /api/ledger?phone=...`: the shop, today's figures, who owes and the last records, for the side panel (demo
   shops only).
 - `GET /api/export?phone=...`: the owner's records in the export format (demo shops only).
 - `GET /health`: `{"ok":true}`, without reading the store.
 
 When `AT_CALLBACK_KEY` is set, `POST /ussd` and `POST /sms` need the query parameter `k` to equal it (403 otherwise).
+When the Africa's Talking sender is set (`AT_USERNAME` and `AT_API_KEY`) and the key is not, both answer 503. With no
+sender (a local run) they stay open. Every browser route is limited per client address as well as per phone number.
 A repeated `/sms` callback (same `id`) gets the first reply and is not handled again.
 
 ## Secrets
 
 Secrets come only from environment variables (`DATABASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `AT_USERNAME`,
-`AT_API_KEY`, `AT_SHORTCODE`, `AT_CALLBACK_KEY`, `PORT`, `TEST_DATABASE_URL`).
+`AT_API_KEY`, `AT_SHORTCODE`, `AT_CALLBACK_KEY`, `ADDRESS_SALT`, `PORT`, `TEST_DATABASE_URL`).
 Never write a key, password or token into a file in this repository, including tests and docs. `.env` files are
 ignored by git; `.env.example` lists the names with empty values.

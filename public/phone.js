@@ -2,7 +2,7 @@
 // This file only draws, listens, sets timers, calls fetch through the api helper and uses localStorage (through
 // ledger.js). Every rule it needs lives in phone-logic.js and ledger-logic.js.
 
-import { createApi, ROUTES } from './api.js';
+import { createApi, isShopGone, ROUTES } from './api.js';
 import { initLedger } from './ledger.js';
 import { DEFAULT_TIME_ZONE, displayPhone, formatClock } from './ledger-logic.js';
 import { MULTITAP_MS, createPhone, parseSmsReply, parseUssdReply, reduce, screenModel } from './phone-logic.js';
@@ -89,7 +89,12 @@ async function runUssd(body) {
   let reply;
   try {
     reply = parseUssdReply(await api.postJson(ROUTES.ussd, body));
-  } catch {
+  } catch (error) {
+    // No demo shop on this number any more (404): go back to the first-visit state, quietly, as the ledger call does.
+    if (isShopGone(error)) {
+      ledger?.forget(body.phone);
+      return;
+    }
     reply = { ok: false };
   }
   afterRequest(dispatch({ type: 'ussdReply', sessionId: body.sessionId, reply }));
@@ -99,7 +104,11 @@ async function runSms({ body, messageId }) {
   let reply;
   try {
     reply = parseSmsReply(await api.postJson(ROUTES.sms, body));
-  } catch {
+  } catch (error) {
+    if (isShopGone(error)) {
+      ledger?.forget(body.phone);
+      return;
+    }
     reply = { ok: false };
   }
   afterRequest(dispatch({ type: 'smsReply', messageId, reply }));

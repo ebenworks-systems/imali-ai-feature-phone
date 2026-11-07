@@ -56,21 +56,35 @@ describe('maskPhone', () => {
 describe('clientAddress', () => {
   const headers = (h: Record<string, string>) => ({ get: (name: string) => h[name.toLowerCase()] ?? null });
 
-  it('takes the first entry of x-forwarded-for, trimmed', () => {
-    expect(clientAddress(headers({ 'x-forwarded-for': '203.0.113.7, 10.0.0.1' }))).toBe('203.0.113.7');
+  it('takes x-real-ip first (Vercel sets it to the connecting address)', () => {
+    expect(clientAddress(headers({ 'x-real-ip': '198.51.100.2' }))).toBe('198.51.100.2');
+    expect(clientAddress(headers({ 'x-real-ip': ' 198.51.100.2 ' }))).toBe('198.51.100.2');
+    expect(clientAddress(headers({ 'x-real-ip': '198.51.100.2', 'x-forwarded-for': '203.0.113.7, 10.0.0.1' }))).toBe(
+      '198.51.100.2'
+    );
+  });
+
+  it('then the rightmost entry of x-forwarded-for, trimmed, never the leftmost (a caller can write that one)', () => {
+    expect(clientAddress(headers({ 'x-forwarded-for': '203.0.113.7, 10.0.0.1' }))).toBe('10.0.0.1');
+    expect(clientAddress(headers({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2, 203.0.113.7  ' }))).toBe('203.0.113.7');
     expect(clientAddress(headers({ 'x-forwarded-for': '  203.0.113.7  ' }))).toBe('203.0.113.7');
     expect(clientAddress(headers({ 'x-forwarded-for': '203.0.113.7' }))).toBe('203.0.113.7');
   });
 
-  it('falls back to x-real-ip, then to unknown', () => {
-    expect(clientAddress(headers({ 'x-real-ip': '198.51.100.2' }))).toBe('198.51.100.2');
+  it('then unknown', () => {
     expect(clientAddress(headers({}))).toBe('unknown');
   });
 
-  it('treats a blank x-forwarded-for as missing', () => {
+  it('treats a blank header as missing', () => {
     expect(clientAddress(headers({ 'x-forwarded-for': '   ' }))).toBe('unknown');
-    expect(clientAddress(headers({ 'x-forwarded-for': ' , 10.0.0.1', 'x-real-ip': '198.51.100.2' }))).toBe('198.51.100.2');
     expect(clientAddress(headers({ 'x-forwarded-for': '', 'x-real-ip': '198.51.100.2' }))).toBe('198.51.100.2');
+    expect(clientAddress(headers({ 'x-real-ip': '   ', 'x-forwarded-for': '203.0.113.7' }))).toBe('203.0.113.7');
+    // The rightmost entry is blank: there is no address to use, so the shared key is used, never an earlier entry.
+    expect(clientAddress(headers({ 'x-forwarded-for': '203.0.113.7, ' }))).toBe('unknown');
+  });
+
+  it('cuts a very long value, so a header cannot be used to fill memory', () => {
+    expect(clientAddress(headers({ 'x-real-ip': 'a'.repeat(500) }))).toHaveLength(64);
   });
 });
 

@@ -214,10 +214,17 @@ async function answerQuestion(
       const option = question.intent.options[Number(pick[1]) - 1];
       if (option) {
         const base = question.intent.base.kind;
+        // The item the owner typed goes with either answer ("sold 45 3 bread" saves bread whichever is picked).
+        const item = question.intent.item ? { item: question.intent.item } : {};
         const intent: Recordable =
           base === 'sale'
-            ? { kind: 'sale', cents: option.cents, ...(option.quantity !== undefined ? { quantity: option.quantity } : {}) }
-            : { kind: 'expense', cents: option.cents };
+            ? {
+                kind: 'sale',
+                cents: option.cents,
+                ...(option.quantity !== undefined ? { quantity: option.quantity } : {}),
+                ...item
+              }
+            : { kind: 'expense', cents: option.cents, ...item };
         return saveOrAsk(c, intent, words, false);
       }
     }

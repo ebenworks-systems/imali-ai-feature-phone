@@ -423,9 +423,68 @@ describe('an ambiguous amount', () => {
     await w.signUp();
     expect(await w.text('sold 45 3 bread')).toBe('Did you mean 1) R45 for 3 or 2) R3 for 45? Reply 1 or 2.');
     expect(await w.records()).toHaveLength(0);
-    expect(await w.text('1')).toBe('Saved: sale R45. Sales today R45. Reply undo to cancel.');
-    expect((await w.records())[0]).toMatchObject({ kind: 'sale', amount: 4500, originalWords: 'sold 45 3 bread' });
+    expect(await w.text('1')).toBe('Saved: sale R45 (3 bread). Sales today R45. Reply undo to cancel.');
+    expect((await w.records())[0]).toMatchObject({
+      kind: 'sale',
+      amount: 4500,
+      item: 'bread',
+      originalWords: 'sold 45 3 bread'
+    });
   });
+
+  it('saves the item "bread" with either answer to "sold 45 3 bread"', async () => {
+    const one = world();
+    await one.signUp();
+    await one.text('sold 45 3 bread');
+    expect(await one.text('1')).toContain('bread');
+    expect((await one.records())[0]).toMatchObject({ kind: 'sale', amount: 4500, item: 'bread' });
+
+    const two = world();
+    await two.signUp();
+    await two.text('sold 45 3 bread');
+    expect(await two.text('2')).toBe('Saved: sale R3 (45 bread). Sales today R3. Reply undo to cancel.');
+    expect((await two.records())[0]).toMatchObject({
+      kind: 'sale',
+      amount: 300,
+      item: 'bread',
+      originalWords: 'sold 45 3 bread'
+    });
+  });
+
+  it('keeps the item through a very large amount that needs a yes', async () => {
+    const w = world();
+    await w.signUp();
+    await w.text('sold 1500000 2 bread');
+    expect(await w.text('1')).toMatch(/^Reply yes to save/);
+    expect(await w.text('yes')).toContain('bread');
+    expect((await w.records())[0]).toMatchObject({ kind: 'sale', item: 'bread' });
+  });
+
+  it.each(['ZAR', 'USD', 'KES', 'NGN', 'GHS', 'ZMW', 'BWP'] as const)(
+    'names the item in the confirmation, within 160 characters, in %s',
+    async (currency) => {
+      const longItem = 'bread and a very long list of other things for the shop';
+      for (const [message, pick, item] of [
+        ['sold 45 3 bread', '1', 'bread'],
+        ['sold 45 3 bread', '2', 'bread'],
+        ['sold 999999.99 999999 bread', '1', 'bread'],
+        ['sold 999999 999999.99 bread', '2', 'bread'],
+        [`sold 45 3 ${longItem}`, '1', longItem]
+      ] as const) {
+        const w = world();
+        const shop = {
+          ...createShop({ name: "Thandi's Spaza", phone: OWNER, currency: currency as Currency, timeZone: 'Africa/Johannesburg' }),
+          createdAt: START.toISOString()
+        };
+        await w.store.createShop(shop);
+        await w.text(message);
+        const reply = await w.text(pick); // expectSmsReply: plain ASCII and at most 160 characters
+        expect(reply).toMatch(/^Saved: sale .*bread/);
+        const [record] = await w.records();
+        expect(record).toMatchObject({ kind: 'sale', item });
+      }
+    }
+  );
 
   it('asks about an expense in the same way', async () => {
     const w = world();

@@ -16,6 +16,14 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * True when the server says there is no demo shop on the number: a 404 from the ledger, ussd or sms route. The shop
+ * was never made, or it was cleared away (demo shops last about a week). The page then returns to the first-visit state.
+ */
+export function isShopGone(error) {
+  return error instanceof ApiError && error.kind === 'http' && error.status === 404;
+}
+
 /** Route paths in one place. */
 export const ROUTES = {
   ussd: '/api/phone/ussd',

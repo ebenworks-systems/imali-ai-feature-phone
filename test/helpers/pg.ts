@@ -23,7 +23,7 @@ const SQL_DIR = fileURLToPath(new URL('../../sql/', import.meta.url));
 export interface TestDatabase {
   sql: Sql;
   schema: string;
-  /** Empties all four tables. */
+  /** Empties all five tables. */
   truncate(): Promise<void>;
   /** Drops the schema and closes the connection. */
   drop(): Promise<void>;
@@ -93,7 +93,7 @@ export async function createTestDatabase(url: string, options: { migrate?: boole
     sql,
     schema,
     async truncate() {
-      await sql.unsafe('truncate records, shops, pending_questions, processed_texts restart identity cascade');
+      await sql.unsafe('truncate records, shops, pending_questions, processed_texts, demo_quota restart identity cascade');
     },
     async drop() {
       await dropSchema(url, schema, sql);

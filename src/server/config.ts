@@ -13,6 +13,14 @@ export interface ServerConfig {
   at?: { username: string; apiKey: string; shortcode: string };
   /** AT_CALLBACK_KEY: when set, POST /ussd and POST /sms need `?k=<this>`. */
   callbackKey?: string;
+  /**
+   * True when the Africa's Talking sender is set (AT_USERNAME and AT_API_KEY) and AT_CALLBACK_KEY is not. Then
+   * POST /ussd and POST /sms are refused with 503: open callbacks would let anyone read and write the ledger of any
+   * number and make the server send texts from the account. With no sender (a local run) they stay open.
+   */
+  callbacksMissingKey?: true;
+  /** ADDRESS_SALT: the salt client addresses are hashed with. Unset: the fixed built-in salt (`salt=default`). */
+  addressSalt?: string;
   /** VERCEL is set. */
   onVercel: boolean;
   warnings: string[];
@@ -40,11 +48,16 @@ export function readConfig(env: Env): ServerConfig {
   const apiKey = clean(env.AT_API_KEY);
   const shortcode = clean(env.AT_SHORTCODE) ?? DEFAULT_SHORTCODE;
   const callbackKey = clean(env.AT_CALLBACK_KEY);
+  const addressSalt = clean(env.ADDRESS_SALT);
   const onVercel = clean(env.VERCEL) !== undefined;
   const warnings: string[] = [];
 
   if (username && !apiKey) warnings.push('AT_API_KEY is missing, so replies are not sent as texts');
   if (apiKey && !username) warnings.push('AT_USERNAME is missing, so replies are not sent as texts');
+  const callbacksMissingKey = Boolean(username && apiKey && !callbackKey);
+  if (callbacksMissingKey) {
+    warnings.push('AT_CALLBACK_KEY is not set, so /ussd and /sms answer 503 until it is (the browser phone still works)');
+  }
   if (onVercel && !databaseUrl) warnings.push('DATABASE_URL is not set, so records are not kept between calls');
 
   return {
@@ -53,6 +66,8 @@ export function readConfig(env: Env): ServerConfig {
     ...(geminiModel ? { geminiModel } : {}),
     ...(username && apiKey ? { at: { username, apiKey, shortcode } } : {}),
     ...(callbackKey ? { callbackKey } : {}),
+    ...(callbacksMissingKey ? { callbacksMissingKey: true as const } : {}),
+    ...(addressSalt ? { addressSalt } : {}),
     onVercel,
     warnings
   };

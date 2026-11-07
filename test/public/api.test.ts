@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, createApi, exportUrl, ledgerUrl } from '../../public/api.js';
+import { ApiError, ROUTES, createApi, exportUrl, isShopGone, ledgerUrl } from '../../public/api.js';
 
 type Call = { url: string; init: RequestInit };
 
@@ -160,5 +160,44 @@ describe('api urls', () => {
 
   it('encodes spaces and other characters', () => {
     expect(ledgerUrl('+27 00 &x=1')).toBe('/api/ledger?phone=%2B27%2000%20%26x%3D1');
+  });
+});
+
+describe('isShopGone: the server says there is no demo shop on the number', () => {
+  it('is true for a 404 from the ussd, sms and ledger routes, which return the page to the first-visit state', async () => {
+    const noShop = { error: 'No demo shop on this number. Press Start demo shop.' };
+    const { fetchFn } = fakeFetch(async () => jsonResponse(noShop, 404));
+    const api = createApi({ fetchFn });
+    const phone = '+27000001234';
+    const calls = [
+      api.postJson(ROUTES.ussd, { phone, sessionId: 'a', text: 'A*1' }),
+      api.postJson(ROUTES.sms, { phone, text: 'hi' }),
+      api.getJson(ledgerUrl(phone))
+    ];
+    for (const call of calls) {
+      const error = await call.then(
+        () => null,
+        (e: unknown) => e
+      );
+      expect(isShopGone(error)).toBe(true);
+    }
+  });
+
+  it.each([400, 409, 429, 500, 503])('is false for a %i answer, which keeps the number', async (status) => {
+    const { fetchFn } = fakeFetch(async () => jsonResponse({ error: 'x' }, status));
+    const error = await failureOf(createApi({ fetchFn }).postJson(ROUTES.sms, { phone: '+27000001234', text: 'x' }));
+    expect(isShopGone(error)).toBe(false);
+  });
+
+  it('is false for a network failure, a timeout and anything that is not an ApiError', async () => {
+    const { fetchFn } = fakeFetch(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const error = await failureOf(createApi({ fetchFn }).postJson(ROUTES.ussd, {}));
+    expect(error.kind).toBe('network');
+    expect(isShopGone(error)).toBe(false);
+    expect(isShopGone(new Error('404'))).toBe(false);
+    expect(isShopGone(null)).toBe(false);
+    expect(isShopGone(undefined)).toBe(false);
   });
 });

@@ -111,3 +111,10 @@ Plain text messages (SMS) to record sales, expenses, customer debts, payments, a
     number as the money with the second as the count and the other way round (R45 for 3, R3 for 45), the same way
     "sold 2 200" asks (requirement 27), and never saves R3 with the item "45". A number written with a currency sign
     or decimals is never offered as a count. Every shape in requirement 51 and requirements 1 to 12 reads as before.
+
+53. When the owner types a sale as two numbers and then the item ("sold 45 3 bread") and picks 1 or 2 (requirement 52),
+    or answers a question about an amount typed with an item ("sold 3 bread 2 200"), the question shall carry the item
+    the owner typed, and the record saved for either answer shall carry it ("bread"). The confirmation reply names the
+    item (for example "Saved: sale R45 (3 bread). Sales today R45. Reply undo to cancel.") and stays within 160
+    characters in every currency (ZAR, USD, KES, NGN, GHS, ZMW and BWP), dropping the item only as requirement 43 says.
+    A message with no item ("sold 2 200") saves no item, as before.

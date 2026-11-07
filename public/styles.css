@@ -18,7 +18,6 @@
   --core:         #FFFDF8;                   /* inner core fill */
   --highlight:    rgba(255, 255, 255, 0.7);  /* soft inset highlight */
   --pill-tint:    #EEF1E6;                   /* eyebrow pill fill */
-  --on-ink:       var(--paper);
 
   /* Primary button: a mid-tone sage fill, lighter than --call (L 0.354 against 0.226). Light theme: no dark fill. */
   --primary-fill:  #8FA87F;                  /* ink label on it 5.94:1 (needs 4.5); fill on paper 2.45:1, on core 2.56:1 */
@@ -149,6 +148,9 @@ a { color: var(--sage-deep); text-decoration: underline; text-underline-offset: 
   border: 0;
 }
 
+/* Shown only on keyboard focus. Light theme: no dark filled area of any size, so the fill is the light core fill,
+   the text is ink and the ring is the focus colour. Measured: ink on core 15.19:1 (needs 4.5); focus ring on paper
+   6.56:1 and on core 6.84:1. */
 .skip {
   position: absolute;
   top: var(--space-2);
@@ -156,12 +158,16 @@ a { color: var(--sage-deep); text-decoration: underline; text-underline-offset: 
   z-index: 60;
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-pill);
-  background: var(--ink);
-  color: var(--on-ink);
+  background: var(--core);
+  color: var(--ink);
   text-decoration: none;
   transform: translateY(-300%);
 }
-.skip:focus { transform: none; }
+.skip:focus {
+  transform: none;
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
 
 .noscript {
   margin: var(--space-4);

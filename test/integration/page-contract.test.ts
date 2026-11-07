@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { ApiError, ROUTES, createApi, isShopGone } from '../../public/api.js';
 import { formatMoney, readLedger, recordRows, sortOwes } from '../../public/ledger-logic.js';
 import { buildUssdText, counterInfo, parseSmsReply, parseUssdReply } from '../../public/phone-logic.js';
 import { DEMO_PHONE, makeApp, postJson } from '../server/helpers.js';
@@ -191,5 +192,40 @@ describe('the page reads the real server answers', () => {
   it('keeps the counter off for an answer that has no length, so a wrong name cannot pass quietly', () => {
     expect(parseUssdReply({ response: 'CON Hi', chars: 2, limit: 182 })).toMatchObject({ chars: null });
     expect(parseSmsReply({ reply: 'Hi', chars: 2, limit: 160 })).toMatchObject({ chars: null });
+  });
+});
+
+describe('the page reads the server\'s 404 for a number with no demo shop', () => {
+  // The page's own api helper, with the real app behind its fetch: what a stale number in localStorage would meet.
+  const pageApi = (app: App) =>
+    createApi({
+      fetchFn: ((url: string, init?: RequestInit) => app.request(url, init)) as unknown as typeof fetch
+    });
+
+  it('sees the ledger, ussd and sms routes all say "gone", so it returns to the first-visit state on any of them', async () => {
+    const { app } = makeApp();
+    const api = pageApi(app);
+    const stale = '+27000004321';
+    const attempts = [
+      api.getJson(`${ROUTES.ledger}?phone=${encodeURIComponent(stale)}`),
+      api.postJson(ROUTES.ussd, { phone: stale, sessionId: 's1', text: '' }),
+      api.postJson(ROUTES.sms, { phone: stale, text: 'today' })
+    ];
+    for (const attempt of attempts) {
+      const error = await attempt.then(
+        () => null,
+        (e: unknown) => e
+      );
+      expect(error).toBeInstanceOf(ApiError);
+      expect(isShopGone(error)).toBe(true);
+    }
+  });
+
+  it('does not see it for a number that has a shop', async () => {
+    const { app } = makeApp();
+    await postJson(app, '/api/phone/demo', { phone: DEMO_PHONE });
+    const api = pageApi(app);
+    expect(parseUssdReply(await api.postJson(ROUTES.ussd, { phone: DEMO_PHONE, sessionId: 's1', text: '' })).ok).toBe(true);
+    expect(parseSmsReply(await api.postJson(ROUTES.sms, { phone: DEMO_PHONE, text: 'today' })).ok).toBe(true);
   });
 });

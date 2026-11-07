@@ -28,9 +28,41 @@ describe('readConfig', () => {
   });
 
   it('gives the sender settings when both AT variables are set, with the sandbox short code 46254', () => {
-    const config = readConfig({ AT_USERNAME: 'sandbox', AT_API_KEY: 'k' });
+    const config = readConfig({ AT_USERNAME: 'sandbox', AT_API_KEY: 'k', AT_CALLBACK_KEY: 'c' });
     expect(config.at).toEqual({ username: 'sandbox', apiKey: 'k', shortcode: '46254' });
     expect(config.warnings).toEqual([]);
+    expect(config.callbacksMissingKey).toBeUndefined();
+  });
+
+  describe('the callback key and the sender', () => {
+    it('flags the callbacks as missing a key when the sender is set and AT_CALLBACK_KEY is not', () => {
+      const config = readConfig({ AT_USERNAME: 'sandbox', AT_API_KEY: 'k' });
+      expect(config.callbacksMissingKey).toBe(true);
+      expect(config.warnings).toHaveLength(1);
+      expect(config.warnings[0]).toContain('AT_CALLBACK_KEY');
+      expect(config.warnings[0]).not.toContain('sandbox');
+    });
+
+    it('treats a callback key of only spaces as missing', () => {
+      expect(readConfig({ AT_USERNAME: 'u', AT_API_KEY: 'k', AT_CALLBACK_KEY: '   ' }).callbacksMissingKey).toBe(true);
+    });
+
+    it('does not flag them when there is a key, or when there is no sender (a local run)', () => {
+      expect(readConfig({ AT_USERNAME: 'u', AT_API_KEY: 'k', AT_CALLBACK_KEY: 'c' }).callbacksMissingKey).toBeUndefined();
+      expect(readConfig({}).callbacksMissingKey).toBeUndefined();
+      expect(readConfig({ AT_CALLBACK_KEY: 'c' }).callbacksMissingKey).toBeUndefined();
+    });
+
+    it('does not flag them when only one of the two sender variables is set (there is no sender)', () => {
+      expect(readConfig({ AT_USERNAME: 'u' }).callbacksMissingKey).toBeUndefined();
+      expect(readConfig({ AT_API_KEY: 'k' }).callbacksMissingKey).toBeUndefined();
+    });
+  });
+
+  it('reads ADDRESS_SALT, trimmed, and leaves it out when blank', () => {
+    expect(readConfig({ ADDRESS_SALT: ' some-salt ' }).addressSalt).toBe('some-salt');
+    expect(readConfig({ ADDRESS_SALT: '   ' }).addressSalt).toBeUndefined();
+    expect(readConfig({}).addressSalt).toBeUndefined();
   });
 
   it('lets AT_SHORTCODE override the short code', () => {

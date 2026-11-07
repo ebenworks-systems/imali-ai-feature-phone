@@ -105,6 +105,13 @@ export function runLedgerStoreContract(label: string, harness: LedgerStoreHarnes
         expect(await store.countShopsWithPhonePrefix('%')).toBe(0);
         expect(await store.countShopsWithPhonePrefix('+2700000_')).toBe(0);
       });
+
+      it('counts every shop for the empty prefix (the cap on shops that are not demo shops uses this)', async () => {
+        expect(await store.countShopsWithPhonePrefix('')).toBe(0);
+        await store.createShop(makeShop('+27000001234'));
+        await store.createShop(makeShop('+254711000000'));
+        expect(await store.countShopsWithPhonePrefix('')).toBe(2);
+      });
     });
 
     describe('records', () => {
@@ -341,6 +348,146 @@ export function runLedgerStoreContract(label: string, harness: LedgerStoreHarnes
         const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
         expect(rejected[0]?.reason).toBeInstanceOf(DuplicateRecordError);
         expect(await store.listRecords(shop.id)).toHaveLength(2);
+      });
+    });
+
+    describe('deleteExpiredDemoShops (housekeeping of invented demo data)', () => {
+      const DAY = 24 * 60 * 60 * 1000;
+      const CUTOFF = new Date('2026-11-01T00:00:00.000Z');
+      const old = new Date(CUTOFF.getTime() - DAY).toISOString();
+      const fresh = new Date(CUTOFF.getTime() + DAY).toISOString();
+
+      const shopMadeAt = (phone: string, createdAt: string, id?: string): Shop => ({ ...makeShop(phone, id), createdAt });
+
+      /** A shop with a sale, a debt and a sale that was undone (so a reversal points at a record of the same shop). */
+      async function addRecords(shop: Shop): Promise<string[]> {
+        const kept = createSaleRecord(shop.id, { amount: 4500, channel: 'sms', originalWords: 'sold 45', now: NOW });
+        const undone = createSaleRecord(shop.id, { amount: 99900, channel: 'sms', originalWords: 'sold 999', now: NOW });
+        const debt = createDebtRecord(shop.id, { amount: 3000, customer: 'Tendai', channel: 'sms', originalWords: 'Tendai owes 30', now: NOW });
+        const reversal = createReversal(undone, 'sms', 'undo', NOW);
+        for (const record of [kept, undone, debt, reversal]) await store.appendRecord(record);
+        return [kept.id, undone.id, debt.id, reversal.id];
+      }
+
+      it('removes a demo shop made before the cutoff with every record, and gives back its phone number', async () => {
+        const shop = shopMadeAt('+27000001234', old);
+        await store.createShop(shop);
+        const ids = await addRecords(shop);
+
+        expect(await store.deleteExpiredDemoShops(CUTOFF, 200)).toEqual(['+27000001234']);
+
+        expect(await store.findShopById(shop.id)).toBeNull();
+        expect(await store.findShopByPhone('+27000001234')).toBeNull();
+        expect(await store.listRecords(shop.id)).toEqual([]);
+        for (const id of ids) expect(await store.findRecordById(id)).toBeNull();
+        expect(await store.findReversalOf(ids[1]!)).toBeNull();
+        expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(0);
+      });
+
+      it('lets the number, the shop id and the record ids be used again afterwards', async () => {
+        const shop = shopMadeAt('+27000001234', old);
+        await store.createShop(shop);
+        const ids = await addRecords(shop);
+        await store.deleteExpiredDemoShops(CUTOFF, 200);
+
+        await store.createShop(shopMadeAt('+27000001234', fresh, shop.id));
+        const again = createSaleRecord(shop.id, { id: ids[1]!, amount: 100, channel: 'sms', originalWords: 'x', now: NOW });
+        await store.appendRecord(again);
+        // The old reversal is gone with its shop, so the same record can be undone again.
+        await store.appendRecord(createReversal(again, 'sms', 'undo', NOW));
+        expect(await store.listRecords(shop.id)).toHaveLength(2);
+      });
+
+      it('keeps a demo shop made at the cutoff or after it, with its records', async () => {
+        const atCutoff = shopMadeAt('+27000001111', CUTOFF.toISOString());
+        const newer = shopMadeAt('+27000002222', fresh);
+        await store.createShop(atCutoff);
+        await store.createShop(newer);
+        await addRecords(atCutoff);
+        await addRecords(newer);
+
+        expect(await store.deleteExpiredDemoShops(CUTOFF, 200)).toEqual([]);
+
+        expect(await store.findShopByPhone('+27000001111')).toEqual(atCutoff);
+        expect(await store.findShopByPhone('+27000002222')).toEqual(newer);
+        expect(await store.listRecords(atCutoff.id)).toHaveLength(4);
+        expect(await store.listRecords(newer.id)).toHaveLength(4);
+      });
+
+      it('never removes a shop on a number that is not a demo number, whatever its age, or its records', async () => {
+        const ancient = '2000-01-01T00:00:00.000Z';
+        const phones = [
+          '+254711000000', // a real-looking number
+          '+27711000000', // a South African number
+          '+27000111111', // starts with +27 but is not the demo range
+          '+270000012345', // the demo prefix with five digits after it
+          '+2700000123', // the demo prefix with three digits after it
+          '+27000009', // shorter still
+          '+2700000', // the prefix alone
+          '+270000012a4' // a letter among the digits
+        ];
+        const shops: Shop[] = [];
+        for (const phone of phones) {
+          const shop = shopMadeAt(phone, ancient);
+          await store.createShop(shop);
+          await addRecords(shop);
+          shops.push(shop);
+        }
+
+        expect(await store.deleteExpiredDemoShops(new Date('2100-01-01T00:00:00.000Z'), 1000)).toEqual([]);
+
+        for (const shop of shops) {
+          expect(await store.findShopByPhone(shop.phone), shop.phone).toEqual(shop);
+          expect(await store.listRecords(shop.id), shop.phone).toHaveLength(4);
+        }
+      });
+
+      it('removes only the demo shops among a mix, and leaves the other shops and their records as they were', async () => {
+        const demoOld = shopMadeAt('+27000001234', old);
+        const demoFresh = shopMadeAt('+27000005678', fresh);
+        const real = shopMadeAt('+254711000000', old);
+        for (const shop of [demoOld, demoFresh, real]) {
+          await store.createShop(shop);
+          await addRecords(shop);
+        }
+        const before = await store.listRecords(real.id);
+
+        expect(await store.deleteExpiredDemoShops(CUTOFF, 200)).toEqual(['+27000001234']);
+
+        expect(await store.findShopByPhone('+27000005678')).toEqual(demoFresh);
+        expect(await store.listRecords(demoFresh.id)).toHaveLength(4);
+        expect(await store.findShopByPhone('+254711000000')).toEqual(real);
+        expect(await store.listRecords(real.id)).toEqual(before);
+      });
+
+      it('removes at most the number asked for, oldest first', async () => {
+        const phones = ['+27000000001', '+27000000002', '+27000000003', '+27000000004'];
+        // Made newest first, so the order of the numbers is not the order of the ages.
+        const ages = [4, 1, 3, 2];
+        for (const [i, phone] of phones.entries()) {
+          await store.createShop(shopMadeAt(phone, new Date(CUTOFF.getTime() - ages[i]! * DAY).toISOString()));
+        }
+
+        expect(await store.deleteExpiredDemoShops(CUTOFF, 2)).toEqual(['+27000000001', '+27000000003']);
+        expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(2);
+        expect(await store.deleteExpiredDemoShops(CUTOFF, 2)).toEqual(['+27000000004', '+27000000002']);
+        expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(0);
+      });
+
+      it.each([0, -5, Number.NaN])('removes nothing when asked for %s shops', async (count) => {
+        await store.createShop(shopMadeAt('+27000001234', old));
+        expect(await store.deleteExpiredDemoShops(CUTOFF, count)).toEqual([]);
+        expect(await store.findShopByPhone('+27000001234')).not.toBeNull();
+      });
+
+      it('removes nothing when the cutoff is not a real date', async () => {
+        await store.createShop(shopMadeAt('+27000001234', old));
+        expect(await store.deleteExpiredDemoShops(new Date('not a date'), 200)).toEqual([]);
+        expect(await store.findShopByPhone('+27000001234')).not.toBeNull();
+      });
+
+      it('does nothing when there is nothing to remove', async () => {
+        expect(await store.deleteExpiredDemoShops(CUTOFF, 200)).toEqual([]);
       });
     });
   });

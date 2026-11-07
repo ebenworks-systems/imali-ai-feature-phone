@@ -137,8 +137,8 @@ describe('sql/001_init.sql', () => {
     expect(text).not.toMatch(/save_key/i);
   });
 
-  it('is the only file whose name starts with a number so far, and is read in name order', () => {
-    const names = readdirSync(path.join(root, 'sql')).filter((n) => /^\d+_.*\.sql$/.test(n));
-    expect(names[0]).toBe('001_init.sql');
+  it('is the first of the files whose names start with a number, and they are read in name order', () => {
+    const names = readdirSync(path.join(root, 'sql')).filter((n) => /^\d+_.*\.sql$/.test(n)).sort();
+    expect(names).toEqual(['001_init.sql', '002_demo_quota.sql']);
   });
 });

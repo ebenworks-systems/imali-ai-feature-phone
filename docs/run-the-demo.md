@@ -35,6 +35,7 @@ Try the server with curl:
 curl http://localhost:3000/health
 
 # Make a demo shop with invented records. The answer holds the demo number.
+# This is the only call that makes a demo shop.
 curl -X POST http://localhost:3000/api/phone/demo
 
 # Send a text message as that shop's owner (use the number from the answer above).
@@ -48,8 +49,22 @@ curl -X POST http://localhost:3000/ussd \
 ```
 
 If `POST /api/phone/demo` is given a number, it makes the shop for that number:
-`-d '{"phone":"+27000001234"}'`. The same address may make 10 demo shops an hour, and the server keeps at most 5,000
-demo shops.
+`-d '{"phone":"+27000001234"}'`.
+
+Limits on demo shops:
+
+- One client address may call `POST /api/phone/demo` 10 times an hour, and the whole site may make 1,000 demo shops a
+  day. The server keeps at most 5,000 demo shops.
+- Both of those counts are kept in the database, so they hold across Vercel's instances. The address is never stored:
+  the table holds a SHA-256 hash of the address and `ADDRESS_SALT` (see Variables). Rows older than 24 hours are removed.
+- The address is read from `x-real-ip` (Vercel sets it to the address that connected), then from the last entry of
+  `x-forwarded-for`, then it is the shared key `unknown`. The first entry of `x-forwarded-for` is never used, because a
+  caller can write it.
+- Demo shops are invented data and are cleared away after about a week. Each call to `POST /api/phone/demo` first removes
+  up to 200 demo shops made more than 7 days ago, with their records, so the cap of 5,000 frees itself. Only shops on a
+  demo number are ever removed. A shop on any other number is never touched.
+- Every browser route is also limited to 120 requests a minute per client address, besides 60 a minute per phone number.
+  These two counts live in the memory of one instance.
 
 ### What the browser phone's routes answer
 
@@ -58,12 +73,17 @@ JSON. `test/integration/page-contract.test.ts` runs the real app and reads these
 
 | Route | Answer |
 |---|---|
-| `POST /api/phone/ussd` `{ phone, sessionId?, text? }` | `{ response, length, limit }`: `response` starts `CON ` or `END `, `length` counts the text after that prefix, `limit` is 182 |
-| `POST /api/phone/sms` `{ phone, text }` | `{ reply, length, limit }`: `limit` is 160 |
+| `POST /api/phone/ussd` `{ phone, sessionId?, text? }` | `{ response, length, limit }`: `response` starts `CON ` or `END `, `length` counts the text after that prefix, `limit` is 182. `404` and `{ error }` when the number has no shop |
+| `POST /api/phone/sms` `{ phone, text }` | `{ reply, length, limit }`: `limit` is 160. `404` and `{ error }` when the number has no shop |
 | `GET /api/ledger?phone=...` | `shop` (name, phone, currency, timeZone); `today` (date, `sales` `{ total, count }`, `expenses`, `moneyInHand`, `newDebts`, `paymentsReceived`, `totalOwed`); `owes` `{ customers: [{ name, owed }], more }`; `records` (the last 20, newest first: id, kind, amount, item?, customer?, channel, originalWords, createdAt, `reversed`, `reversesRecordId?`) |
 
 Every money value is `{ cents, text }`: whole cents and the same amount written for the shop's currency. A demo shop
 starts with 17 invented records spread over today and the two days before.
+
+A demo number that has no shop is refused on `/api/phone/ussd` and `/api/phone/sms` with `404` and
+`No demo shop on this number. Press Start demo shop.`, before any handler runs, and nothing is written. The dialled
+menu and the text messages would otherwise sign a new owner up. Only `POST /api/phone/demo` makes demo shops. The page
+treats that `404`, like the one from `/api/ledger`, as a stale number and quietly returns to the first-visit state.
 
 ### Variables
 
@@ -76,11 +96,16 @@ starts with 17 invented records spread over today and the two days before.
 | `AT_USERNAME` | Africa's Talking app name. `sandbox` uses the sandbox host | no text replies are sent |
 | `AT_API_KEY` | Africa's Talking API key | no text replies are sent |
 | `AT_SHORTCODE` | Short code that text replies come from | `46254` (the sandbox short code) |
-| `AT_CALLBACK_KEY` | Closes `/ussd` and `/sms` to anyone without `?k=<AT_CALLBACK_KEY>` in the address | both stay open |
+| `AT_CALLBACK_KEY` | Closes `/ussd` and `/sms` to anyone without `?k=<AT_CALLBACK_KEY>` in the address | with `AT_USERNAME` and `AT_API_KEY` set: both answer `503` until it is set. With no sender (a local run): both stay open |
+| `ADDRESS_SALT` | A long random string. Client addresses are hashed with it before the demo limits are kept | a fixed built-in salt, the same in every instance (the start line says `salt=default`) |
 | `TEST_DATABASE_URL` | A database the Postgres tests may use | those tests are skipped |
 
 Replies go out as text messages only when both `AT_USERNAME` and `AT_API_KEY` are set. Replies to demo numbers are
 never sent.
+
+Two more limits, both in the memory of one instance: the model reader (`GEMINI_API_KEY`) is asked at most 200 times an
+hour in all, and beyond that the fixed rules answer alone. `/ussd` and `/sms` accept 300 requests a minute per client
+address and 30 a minute per phone number. The store also refuses to make more than 2,000 shops that are not demo shops.
 
 ## 3. Run the tests
 
@@ -128,10 +153,11 @@ the URL is a pooled one, or a proxy dropped the option. Use the direct connectio
    DATABASE_URL='<connection string>' npm run db:migrate
    ```
 
-   It prints `applied 001_init.sql`. Run it again and it prints `Nothing to apply.` If `DATABASE_URL` is empty it says
-   so and stops, and it never prints the value.
-5. Check that Neon now has four tables: `shops`, `records`, `pending_questions` and `processed_texts`
-   (plus `schema_migrations`).
+   It prints `applied 001_init.sql` and `applied 002_demo_quota.sql`. Run it again and it prints `Nothing to apply.` If
+   `DATABASE_URL` is empty it says so and stops, and it never prints the value. A migration that has been applied is
+   never edited; a change goes in a new file.
+5. Check that Neon now has five tables: `shops`, `records`, `pending_questions`, `processed_texts` and `demo_quota`
+   (plus `schema_migrations`). `demo_quota` holds the demo limits per address hash; it never holds an address.
 
 Use the **pooled** string as `DATABASE_URL` on Vercel. Use the **direct** string as `TEST_DATABASE_URL`.
 
@@ -139,8 +165,9 @@ Use the **pooled** string as `DATABASE_URL` on Vercel. Use the **direct** string
 
 1. Import the repository in Vercel. Leave the framework as **Other**. Vercel reads `vercel.json`, serves `public/` as
    static files and sends `/ussd`, `/sms`, `/health` and `/api/*` to the function in `api/index.ts`.
-2. Add the environment variables: `DATABASE_URL`, and if you want them `GEMINI_API_KEY`, `GEMINI_MODEL`,
-   `AT_USERNAME`, `AT_API_KEY`, `AT_SHORTCODE` and `AT_CALLBACK_KEY`.
+2. Add the environment variables: `DATABASE_URL`, `ADDRESS_SALT` (a long random string), and if you want them
+   `GEMINI_API_KEY`, `GEMINI_MODEL`, `AT_USERNAME`, `AT_API_KEY`, `AT_SHORTCODE` and `AT_CALLBACK_KEY`. Set
+   `AT_CALLBACK_KEY` whenever you set `AT_USERNAME` and `AT_API_KEY` (see "The callback key").
 3. Pick a function region near your Neon region.
 4. Deploy, then open `https://imali-ai-feature-phone.vercel.app/health`. It should say `{"ok":true}`.
 
@@ -165,8 +192,12 @@ string, and end both callback addresses with `?k=` and that string:
 - `https://imali-ai-feature-phone.vercel.app/sms?k=<AT_CALLBACK_KEY>`
 
 A call without the right `k` gets `403` and a plain sentence, and nothing is read or saved. The key is part of the
-address, so it can show in request logs. Change it if it leaks. With `AT_CALLBACK_KEY` empty, both addresses are open.
-The browser phone and `/health` never need the key.
+address, so it can show in request logs. Change it if it leaks. The browser phone and `/health` never need the key.
+
+Without a key, anyone could read and write the ledger of any number and make the server send texts from your account.
+So when `AT_USERNAME` and `AT_API_KEY` are set and `AT_CALLBACK_KEY` is not, `/ussd` and `/sms` answer `503` and a plain
+sentence, nothing is read or saved, and the start line says `callback=missing-key`. The server still starts and the
+browser phone still works. With no sender (a local run) both addresses are open, as before.
 
 ### Repeated text callbacks
 
@@ -185,10 +216,13 @@ is saved twice.
 |---|---|
 | `Sorry, something went wrong. Please try again.` | The server hit an error it did not expect. The full error is in the log (Vercel: the project's runtime logs). The log line has the route, the error name, message and stack, and a masked phone number. |
 | `This shop book is full. Please start a new demo shop.` | The shop already holds 2,000 records. |
-| `Too many requests. Please wait a minute and try again.` | One phone number made more than 60 browser requests in a minute. |
-| `Too many demo shops from this address.` | One address made 10 demo shops in an hour. |
-| `The demo is full right now.` | The server already holds 5,000 demo shops. |
+| `Too many requests. Please wait a minute and try again.` | One phone number made more than 60 browser requests in a minute, or one address more than 120 (browser routes) or 300 (`/ussd` and `/sms`), or one phone number more than 30 on `/ussd` and `/sms`. |
+| `Too many demo shops from this address.` | One address made 10 calls to `POST /api/phone/demo` in an hour. |
+| `The demo is full right now.` | The server already holds 5,000 demo shops, or the site made 1,000 today. |
+| `No demo shop on this number. Press Start demo shop.` (404) | A browser route was called for a demo number with no shop (never made, or cleared away after about a week). |
+| `Sorry, no new shops can be added right now.` | The store already holds 2,000 shops that are not demo shops. |
 | `403 Not allowed.` on `/ussd` or `/sms` | `AT_CALLBACK_KEY` is set and the address has no matching `?k=`. |
+| `503 This service is not set up yet.` on `/ussd` or `/sms` | The Africa's Talking sender is set but `AT_CALLBACK_KEY` is not. Set the key. |
 | `Use a demo number: +2700000 followed by 4 digits.` | The browser routes accept demo numbers only. |
 | `Got your message. Working on it.` | A repeat of a text arrived while the first one was still being handled. |
 | Start-up warning: records are not kept between calls | The server is on Vercel without `DATABASE_URL`, so records live in one instance's memory. Set `DATABASE_URL`. |
@@ -201,6 +235,7 @@ No answer ever holds a stack trace, a database message or a connection string.
 - `POST /api/phone/demo` creates a shop, and its rows appear in Neon.
 - `POST /ussd` with the form fields above answers `CON ...`. With `AT_CALLBACK_KEY` set, it answers `403` without
   `?k=` and `CON ...` with it.
-- The runtime log shows one start line such as `store=postgres gemini=off sms=sandbox callback=key`, and no secret.
+- The runtime log shows one start line such as `store=postgres gemini=off sms=sandbox callback=key salt=set`, and no
+  secret. `callback=missing-key` means `/ussd` and `/sms` are answering `503`; `salt=default` means `ADDRESS_SALT` is not set.
 - A request to `/sms` reaches the function with the path `/sms`. The rewrite in `vercel.json` should keep the original
   path. If it does not, see "Risks and known gaps" in `.kiro/specs/server-and-store/design.md` for the fallbacks.

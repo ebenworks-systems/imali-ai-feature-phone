@@ -287,3 +287,12 @@ an optional first line on a screen that tells the owner what went wrong, such as
     sold)
     **THE SYSTEM SHALL** write the minus sign before the currency symbol, `-R60` and `-KSh1,200.50`, never `R-60`, in
     every currency, by changing `formatCents` in `src/core/money/format.ts` so that both channels get it.
+
+### The shop found by id
+
+54. **WHEN** `createShop` in `src/channels/ussd/ports.ts` meets `ShopAlreadyExistsError`
+    **THE SYSTEM SHALL** carry on with the shop found for the caller's own phone number, and with the shop found by the
+    session's shop id **ONLY WHEN** that shop's phone number equals the caller's; for a shop of another phone number it
+    **SHALL** rethrow the error and change nothing, so the route answers with its generic error. The session id is chosen
+    by the client and the shop id is made from it, so a caller who sends another owner's session id must never be handed
+    that owner's shop (its name and records). Before this, the id fallback used the shop whatever its phone number.

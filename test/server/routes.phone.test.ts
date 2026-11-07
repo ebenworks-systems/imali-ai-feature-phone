@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureErrors, DEMO_PHONE, makeApp, postJson, throwingStore } from './helpers.js';
+import { captureErrors, DEMO_PHONE, makeApp, makeShopApp, postJson, throwingStore } from './helpers.js';
 
 vi.mock('../../src/channels/index.js', () => ({
   handleUssd: vi.fn(),
@@ -22,7 +22,7 @@ const NOT_DEMO = 'Use a demo number: +2700000 followed by 4 digits.';
 
 describe('POST /api/phone/ussd', () => {
   it('gives { response, length, limit: 182 } with length counted after the prefix', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     const res = await postJson(app, '/api/phone/ussd', { phone: DEMO_PHONE, sessionId: 'S1', text: '1' });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('application/json');
@@ -32,13 +32,13 @@ describe('POST /api/phone/ussd', () => {
 
   it('counts an END screen after its prefix too', async () => {
     ussdMock.mockResolvedValue({ response: 'END Saved: sale R45 bread. Sales today R1,285.' });
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     const body = await (await postJson(app, '/api/phone/ussd', { phone: DEMO_PHONE })).json();
     expect(body.length).toBe('Saved: sale R45 bread. Sales today R1,285.'.length);
   });
 
   it('calls the handler as POST /ussd does, with the service code *384*46254#', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     await postJson(app, '/api/phone/ussd', { phone: '+27 00 000 1234', sessionId: 'S1', text: '1*45' });
     expect(ussdMock.mock.calls[0]![0]).toMatchObject({
       sessionId: 'S1',
@@ -50,7 +50,7 @@ describe('POST /api/phone/ussd', () => {
   });
 
   it('makes a new random session id for each call without one, and passes a given one on', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     await postJson(app, '/api/phone/ussd', { phone: DEMO_PHONE });
     await postJson(app, '/api/phone/ussd', { phone: DEMO_PHONE });
     const [a, b] = ussdMock.mock.calls.map((c) => c[0].sessionId);
@@ -62,7 +62,7 @@ describe('POST /api/phone/ussd', () => {
   });
 
   it('uses the empty string when text is missing', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     await postJson(app, '/api/phone/ussd', { phone: DEMO_PHONE });
     expect(ussdMock.mock.calls[0]![0].text).toBe('');
   });
@@ -102,12 +102,12 @@ describe('POST /api/phone/ussd', () => {
   });
 
   it('accepts +27 00 000 1234', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     expect((await postJson(app, '/api/phone/ussd', { phone: '+27 00 000 1234' })).status).toBe(200);
   });
 
   it('answers 400 for an input of 183 characters after the last *, and accepts 182', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     const long = await postJson(app, '/api/phone/ussd', { phone: DEMO_PHONE, text: `1*${'9'.repeat(183)}` });
     expect(long.status).toBe(400);
     expect(ussdMock).not.toHaveBeenCalled();
@@ -118,7 +118,7 @@ describe('POST /api/phone/ussd', () => {
 
 describe('POST /api/phone/sms', () => {
   it('gives { reply, length, limit: 160 }', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     const res = await postJson(app, '/api/phone/sms', { phone: DEMO_PHONE, text: 'sold 3 bread 45' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ reply: 'Saved: sale R45.', length: 'Saved: sale R45.'.length, limit: 160 });
@@ -126,23 +126,25 @@ describe('POST /api/phone/sms', () => {
 
   it('calls handleText as POST /sms does: phone, text, now, store, pending, reader', async () => {
     const reader = { read: vi.fn(async () => null) };
-    const { app, pending } = makeApp({ reader });
+    const { app, pending } = await makeShopApp({ reader });
     await postJson(app, '/api/phone/sms', { phone: '+27 00 000 1234', text: 'today' });
     const arg = textMock.mock.calls[0]![0];
     expect(arg).toMatchObject({ phone: DEMO_PHONE, text: 'today', now: new Date('2026-11-07T10:00:00.000Z') });
     expect(arg.pending).toBe(pending);
-    expect(arg.reader).toBe(reader);
+    // The reader is wrapped in the ceiling on model calls, so it is not the same object, but it asks the same reader.
+    await arg.reader!.read('some words');
+    expect(reader.read).toHaveBeenCalledWith('some words');
   });
 
   it('never sends a text message, even when a sender is set', async () => {
     const sender = { send: vi.fn(async () => {}) };
-    const { app } = makeApp({ smsSender: sender });
+    const { app } = await makeShopApp({ smsSender: sender });
     await postJson(app, '/api/phone/sms', { phone: DEMO_PHONE, text: 'today' });
     expect(sender.send).not.toHaveBeenCalled();
   });
 
   it('answers 400 for text of 481 characters, and accepts 480', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     const long = await postJson(app, '/api/phone/sms', { phone: DEMO_PHONE, text: 'a'.repeat(481) });
     expect(long.status).toBe(400);
     expect(textMock).not.toHaveBeenCalled();
@@ -176,7 +178,7 @@ describe('POST /api/phone/sms', () => {
   );
 
   it('answers an empty text (the handler decides what it means)', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp();
     expect((await postJson(app, '/api/phone/sms', { phone: DEMO_PHONE, text: '' })).status).toBe(200);
   });
 });

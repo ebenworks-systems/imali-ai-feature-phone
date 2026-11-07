@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryProcessedTextStore } from '../../src/store/processed.js';
-import { captureErrors, makeApp, postForm, postJson, throwingStore } from './helpers.js';
+import { captureErrors, makeApp, makeShopApp, postForm, postJson, throwingStore } from './helpers.js';
 
 vi.mock('../../src/channels/index.js', () => ({
   handleUssd: vi.fn(async () => ({ response: 'CON Hello' })),
@@ -85,7 +85,7 @@ describe('with AT_CALLBACK_KEY set', () => {
   });
 
   it('never asks for the key on /health or on the browser routes', async () => {
-    const { app } = makeApp({ callbackKey: KEY });
+    const { app } = await makeShopApp({ callbackKey: KEY });
     expect((await app.request('/health')).status).toBe(200);
     const phone = await postJson(app, '/api/phone/sms', { phone: '+27000001234', text: 'today' });
     expect(phone.status).toBe(200);

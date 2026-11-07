@@ -36,6 +36,15 @@ describe('package.json and .gitignore (requirements 6 and 96)', () => {
     expect(lines).toContain('.vercel');
   });
 
+  it('names every variable of .env.example in the variables table of docs/run-the-demo.md', () => {
+    const names = readFileSync(new URL('.env.example', root), 'utf8')
+      .split('\n')
+      .filter((l) => l.trim() !== '')
+      .map((l) => l.split('=')[0]!);
+    const doc = readFileSync(new URL('docs/run-the-demo.md', root), 'utf8');
+    for (const name of names) expect(doc, name).toMatch(new RegExp(`^\\| \`${name}\` \\|`, 'm'));
+  });
+
   it('lists every environment variable in .env.example with an empty value', () => {
     const lines = readFileSync(new URL('.env.example', root), 'utf8').split('\n').filter((l) => l.trim() !== '');
     expect(lines).toEqual([
@@ -46,6 +55,7 @@ describe('package.json and .gitignore (requirements 6 and 96)', () => {
       'AT_API_KEY=',
       'AT_SHORTCODE=',
       'AT_CALLBACK_KEY=',
+      'ADDRESS_SALT=',
       'PORT=',
       'TEST_DATABASE_URL='
     ]);

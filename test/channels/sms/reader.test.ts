@@ -492,7 +492,8 @@ describe('readIntent', () => {
         options: [
           { cents: 4500, quantity: 3 },
           { cents: 300, quantity: 45 }
-        ]
+        ],
+        item: 'bread'
       });
     });
 
@@ -503,7 +504,8 @@ describe('readIntent', () => {
         options: [
           { cents: 4500, quantity: 3 },
           { cents: 300, quantity: 45 }
-        ]
+        ],
+        item: 'bread and milk'
       });
     });
 
@@ -511,8 +513,19 @@ describe('readIntent', () => {
       expect(readIntent('sold R45 3 bread', currency)).toEqual({
         kind: 'ambiguous',
         base: { kind: 'sale' },
-        options: [{ cents: 4500, quantity: 3 }, { cents: 300 }]
+        options: [{ cents: 4500, quantity: 3 }, { cents: 300 }],
+        item: 'bread'
       });
+    });
+
+    it('keeps the item when the amount after it is the ambiguous part ("sold 3 bread 2 200")', () => {
+      expect(readIntent('sold 3 bread 2 200', currency)).toMatchObject({ kind: 'ambiguous', item: 'bread' });
+    });
+
+    it('has no item when the owner typed none ("sold 2 200")', () => {
+      const intent = readIntent('sold 2 200', currency);
+      expect(intent).toMatchObject({ kind: 'ambiguous' });
+      expect(intent).not.toHaveProperty('item');
     });
 
     it('keeps the shapes that have a clear order', () => {

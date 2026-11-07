@@ -11,11 +11,13 @@ const pg = vi.hoisted(() => {
   const store = { fake: 'store' };
   class PostgresPendingStore { constructor(public sql: unknown) {} }
   class PostgresProcessedTextStore { constructor(public sql: unknown) {} }
+  class PostgresDemoQuotaStore { constructor(public sql: unknown) {} }
   return {
     sql,
     store,
     PostgresPendingStore,
     PostgresProcessedTextStore,
+    PostgresDemoQuotaStore,
     connectPostgres: vi.fn((_url: string) => sql),
     closePostgres: vi.fn(async (_sql: unknown) => {}),
     createPostgresStore: vi.fn((_sql: unknown) => store)
@@ -57,14 +59,14 @@ describe('createAppFromEnv with nothing set', () => {
     expect(started.parts.reader).toBeUndefined();
     expect(started.parts.smsSender).toBeUndefined();
     expect(started.parts.callbackKey).toBeUndefined();
-    expect(started.summary).toBe('store=memory gemini=off sms=off callback=open');
+    expect(started.summary).toBe('store=memory gemini=off sms=off callback=open salt=default');
     expect(started.warnings).toEqual([]);
     expect(pg.connectPostgres).not.toHaveBeenCalled();
   });
 
   it('treats blank values as not set', () => {
     const started = createAppFromEnv({ DATABASE_URL: ' ', GEMINI_API_KEY: '', AT_USERNAME: '  ', AT_API_KEY: '', AT_CALLBACK_KEY: ' ' });
-    expect(started.summary).toBe('store=memory gemini=off sms=off callback=open');
+    expect(started.summary).toBe('store=memory gemini=off sms=off callback=open salt=default');
   });
 
   it('answers /health and keeps close() harmless', async () => {
@@ -118,11 +120,11 @@ describe('the Gemini reader', () => {
 describe('the Africa\'s Talking sender', () => {
   it('is built when both AT variables are set, and reported as sandbox for AT_USERNAME=sandbox', async () => {
     const { fetch, calls } = fakeFetch(() => new Response(JSON.stringify({ SMSMessageData: { Recipients: [{ statusCode: 101 }] } }), { status: 201 }));
-    const started = createAppFromEnv({ AT_USERNAME: 'sandbox', AT_API_KEY: KEY }, { fetch });
+    const started = createAppFromEnv({ AT_USERNAME: 'sandbox', AT_API_KEY: KEY, AT_CALLBACK_KEY: KEY }, { fetch });
     expect(started.parts.smsSender).toBeDefined();
-    expect(started.summary).toBe('store=memory gemini=off sms=sandbox callback=open');
+    expect(started.summary).toBe('store=memory gemini=off sms=sandbox callback=key salt=default');
 
-    const res = await sms(started.app, { from: '+254711000000', text: 'hello', id: 'ATXid_1' });
+    const res = await sms(started.app, { from: '+254711000000', text: 'hello', id: 'ATXid_1' }, `?k=${KEY}`);
     expect(res.status).toBe(200);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe('https://api.sandbox.africastalking.com/version1/messaging');
@@ -135,16 +137,19 @@ describe('the Africa\'s Talking sender', () => {
 
   it('uses AT_SHORTCODE as the from field', async () => {
     const { fetch, calls } = fakeFetch(() => new Response(JSON.stringify({ SMSMessageData: { Recipients: [] } }), { status: 201 }));
-    const started = createAppFromEnv({ AT_USERNAME: 'sandbox', AT_API_KEY: KEY, AT_SHORTCODE: '12345' }, { fetch });
-    await sms(started.app, { from: '+254711000000', text: 'hello' });
+    const started = createAppFromEnv(
+      { AT_USERNAME: 'sandbox', AT_API_KEY: KEY, AT_SHORTCODE: '12345', AT_CALLBACK_KEY: KEY },
+      { fetch }
+    );
+    await sms(started.app, { from: '+254711000000', text: 'hello' }, `?k=${KEY}`);
     expect(new URLSearchParams(String(calls[0]!.init.body)).get('from')).toBe('12345');
   });
 
   it('uses the live host and reports live for another username', async () => {
     const { fetch, calls } = fakeFetch(() => new Response(JSON.stringify({ SMSMessageData: { Recipients: [] } }), { status: 201 }));
-    const started = createAppFromEnv({ AT_USERNAME: 'imali', AT_API_KEY: KEY }, { fetch });
+    const started = createAppFromEnv({ AT_USERNAME: 'imali', AT_API_KEY: KEY, AT_CALLBACK_KEY: KEY }, { fetch });
     expect(started.summary).toContain('sms=live');
-    await sms(started.app, { from: '+254711000000', text: 'hello' });
+    await sms(started.app, { from: '+254711000000', text: 'hello' }, `?k=${KEY}`);
     expect(calls[0]!.url).toBe('https://api.africastalking.com/version1/messaging');
   });
 
@@ -154,6 +159,78 @@ describe('the Africa\'s Talking sender', () => {
     expect(started.warnings).toHaveLength(1);
     expect(started.warnings[0]).toContain('AT_API_KEY');
     expect(JSON.stringify(started.warnings)).not.toContain('secret-name-value');
+  });
+});
+
+describe('the sender without a callback key', () => {
+  const env = { AT_USERNAME: 'sandbox', AT_API_KEY: KEY };
+  const ussd = (app: { request: (p: string, i?: RequestInit) => Response | Promise<Response> }, query = '') =>
+    app.request(`/ussd${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ sessionId: 'S1', serviceCode: '*384*46254#', phoneNumber: '+254711000000', text: '' }).toString()
+    });
+
+  it('starts, says callback=missing-key on the start line and warns by name', () => {
+    const started = createAppFromEnv(env);
+    expect(started.summary).toBe('store=memory gemini=off sms=sandbox callback=missing-key salt=default');
+    expect(started.warnings.join(' ')).toContain('AT_CALLBACK_KEY');
+    expect(JSON.stringify(started.warnings)).not.toContain(KEY);
+  });
+
+  it('answers 503 with a plain sentence on /ussd and /sms, and sends nothing', async () => {
+    const { fetch, calls } = fakeFetch(() => new Response('{}', { status: 201 }));
+    const started = createAppFromEnv(env, { fetch });
+    for (const res of [await sms(started.app, { from: '+254711000000', text: 'hello' }), await ussd(started.app)]) {
+      expect(res.status).toBe(503);
+      expect(await res.text()).toBe('This service is not set up yet. Please try again later.');
+    }
+    // A call that guesses a key is not let in either, because there is no key.
+    expect((await sms(started.app, { from: '+254711000000', text: 'hello' }, '?k=')).status).toBe(503);
+    expect((await sms(started.app, { from: '+254711000000', text: 'hello' }, `?k=${KEY}`)).status).toBe(503);
+    expect(calls).toHaveLength(0);
+    expect(await started.parts.store.findShopByPhone('+254711000000')).toBeNull();
+  });
+
+  it('keeps the browser routes and /health working', async () => {
+    const started = createAppFromEnv(env);
+    expect((await started.app.request('/health')).status).toBe(200);
+    const made = await started.app.request('/api/phone/demo', { method: 'POST', body: JSON.stringify({ phone: '+27000001234' }) });
+    expect(made.status).toBe(201);
+    const text = await started.app.request('/api/phone/sms', { method: 'POST', body: JSON.stringify({ phone: '+27000001234', text: 'today' }) });
+    expect(text.status).toBe(200);
+  });
+
+  it('is not triggered when there is no sender (a local run stays open) or when a key is set', async () => {
+    expect((await sms(createAppFromEnv({}).app, { from: '+254711000000', text: 'hello' })).status).toBe(200);
+    const withKey = createAppFromEnv({ ...env, AT_CALLBACK_KEY: KEY }, { fetch: fakeFetch(() => new Response('{}', { status: 201 })).fetch });
+    expect(withKey.summary).toContain('callback=key');
+    expect((await sms(withKey.app, { from: '+254711000000', text: 'hello' }, `?k=${KEY}`)).status).toBe(200);
+  });
+});
+
+describe('ADDRESS_SALT', () => {
+  it('says salt=default on the start line when it is not set, and salt=set (never the value) when it is', () => {
+    expect(createAppFromEnv({}).summary).toContain('salt=default');
+    expect(createAppFromEnv({ ADDRESS_SALT: '   ' }).summary).toContain('salt=default');
+    const started = createAppFromEnv({ ADDRESS_SALT: 'a-long-random-salt-value' });
+    expect(started.summary).toContain('salt=set');
+    expect(started.summary).not.toContain('a-long-random-salt-value');
+  });
+
+  it('hashes addresses with the salt, so two salts give two different keys', async () => {
+    const keysFor = async (env: Record<string, string>) => {
+      const started = createAppFromEnv(env);
+      await started.app.request('/api/phone/demo', { method: 'POST', headers: { 'x-real-ip': '203.0.113.7' }, body: '{}' });
+      return (started.parts.quota as unknown as { keys(): string[] }).keys();
+    };
+    const [a] = await keysFor({});
+    const [b] = await keysFor({ ADDRESS_SALT: 'another-salt' });
+    const [c] = await keysFor({});
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(b).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).not.toBe(b);
+    expect(a).toBe(c); // the same fixed salt in every instance, so every instance counts alike
   });
 });
 
@@ -176,6 +253,8 @@ describe('DATABASE_URL', () => {
     expect(started.parts.pending).toBeInstanceOf(pg.PostgresPendingStore);
     expect((started.parts.pending as unknown as { sql: unknown }).sql).toBe(pg.sql);
     expect(started.parts.processed).toBeInstanceOf(pg.PostgresProcessedTextStore);
+    expect(started.parts.quota).toBeInstanceOf(pg.PostgresDemoQuotaStore);
+    expect((started.parts.quota as unknown as { sql: unknown }).sql).toBe(pg.sql);
     expect(started.summary).toContain('store=postgres');
     expect(pg.closePostgres).not.toHaveBeenCalled();
     await started.close();
@@ -204,6 +283,7 @@ describe('secrets', () => {
       AT_API_KEY: 'value-atkey-5b8e',
       AT_SHORTCODE: '98765',
       AT_CALLBACK_KEY: 'value-callback-4a7f',
+      ADDRESS_SALT: 'value-salt-3z6g',
       VERCEL: '1'
     };
     const started = createAppFromEnv(env);

@@ -7,8 +7,9 @@ tests in the same task. Do the groups in order; inside a group, in order.
 Route tests that check exactly what the app passes to a handler replace the handler with `vi.mock`; the whole-session
 tests in group 7 use the real handlers.
 
-Tasks 9.3 and 9.4 need a person with a test database and with the Vercel and Neon accounts. They stay unticked until
-that person has done them.
+Task 9.3 needed a person with a test database and has been done (it is ticked, with the date and the numbers). Task 9.4
+needs a person with the Vercel and Neon accounts and stays unticked until that person has done it. Group 11 added later
+fixes; its task 11.9 asks the same person to run the Postgres suites again for the new tests.
 
 ## 0. Before you start
 
@@ -456,3 +457,83 @@ the fixed clock, and replace the two handlers with `vi.mock` so they check exact
   - Files: `test/helpers/pg.ts`, `test/helpers/pg-timeout.test.ts`
   - Requirements: 99
 
+## 11. Fixes after the second review (before the live demo went public)
+
+A second reviewer read the code and found six faults, each confirmed, plus one small item. Each fix has a test that
+fails on the code as it was and passes now. The Postgres-only parts could not be run in the session that made them
+(TEST_DATABASE_URL was not set); task 11.9 is for that.
+
+- [x] 11.1 **The browser routes no longer make shops.** `POST /api/phone/ussd` and `POST /api/phone/sms` look the shop up
+  after the shape, number and length checks; a demo number with no shop gets 404 `No demo shop on this number. Press
+  Start demo shop.` before any handler runs, and nothing is written. The handlers get `withoutShopCreation(store)`, so even
+  a shop cleared away between the check and the handler cannot be signed up again. Only `POST /api/phone/demo` makes
+  shops. The page returns quietly to the first-visit state on this 404 (browser-phone task 64). `docs/judges.md` and
+  `docs/run-the-demo.md` say so. Tests: `test/server/routes.noshop.test.ts` ("A*1", "hi" then a name, 100 numbers, the
+  vanishing shop), `test/integration/page-contract.test.ts`; `makeShopApp` in `test/server/helpers.ts` seeds a shop for
+  the older route tests.
+  - Files: `src/server/routes/browser.ts`, `src/server/constants.ts`, `src/store/limit.ts`, `test/server/routes.noshop.test.ts`, `test/server/helpers.ts`, `docs/judges.md`, `docs/run-the-demo.md`
+  - Requirements: 100, 101
+
+- [x] 11.2 **Demo shops expire.** `LedgerStore.deleteExpiredDemoShops(createdBefore, maxShops)` on both stores
+  (`src/store/demo.ts` holds what a demo number is; Postgres: one transaction, `for update`, the demo test in SQL twice,
+  pending questions, records by `shop_id`, shops). `POST /api/phone/demo` calls it with now minus 7 days and 200 shops
+  before the cap check; a failure is logged and does not stop the call. In the terms of the records rules this is
+  housekeeping of invented data, not an edit of a record (requirement 102); no code path deletes a single record or a
+  non-demo shop (a test scans the source). Tests: the store contract in `test/store/contract.ts` (memory, and Postgres
+  when it runs), `test/store/postgres/housekeeping.test.ts` (fake `sql`: one transaction, statements and values),
+  `test/server/housekeeping.test.ts`. A non-demo shop of any age, and shapes that only look like a demo number, are kept.
+  - Files: `src/store/demo.ts`, `src/store/interface.ts`, `src/store/memory/store.ts`, `src/store/postgres/store.ts`, `src/store/limit.ts`, `src/server/routes/browser.ts`, tests as above
+  - Requirements: 102, 103, 104, 105
+
+- [x] 11.3 **Limits per client address.** (a) `clientAddress` reads `x-real-ip`, then the last `x-forwarded-for` entry, then
+  `unknown`. (b) Every browser route counts 120 a minute per address (middleware in `createApp`, before the body limit).
+  (c) The demo-create limit (10 an hour per address) and a ceiling of 1,000 demo shops a day are kept in a `DemoQuotaStore`
+  (`src/store/quota.ts` and `postgres/quota.ts`), keyed by `addressKey(address, salt)` (`src/server/address.ts`), with
+  the new migration `sql/002_demo_quota.sql`; ADDRESS_SALT (default: a fixed built-in salt, start line `salt=default`) is in
+  `.env.example` and `docs/run-the-demo.md`. (d) `withReaderLimit` caps model-reader calls at 200 an hour per instance.
+  Tests: `test/server/phone.test.ts`, `limits.address.test.ts`, `routes.demo.test.ts`, `bootstrap.test.ts`,
+  `config.test.ts`, `test/store/quota.ts` with `quota.test.ts` (memory) and `postgres/quota.test.ts` (Postgres, plus a
+  fake-`sql` test and a test of the migration file).
+  - Files: `src/server/phone.ts`, `src/server/address.ts`, `src/server/app.ts`, `src/server/context.ts`, `src/server/readerLimit.ts`, `src/server/config.ts`, `src/server/bootstrap.ts`, `src/server/routes/browser.ts`, `src/store/quota.ts`, `src/store/postgres/quota.ts`, `src/store/postgres/index.ts`, `sql/002_demo_quota.sql`, `.env.example`, `docs/run-the-demo.md`, tests as above
+  - Requirements: 92, 93, 94, 106, 107, 108, 109, 110, 111
+
+- [x] 11.4 **Africa's Talking callbacks closed without a key.** `readConfig` sets `callbacksMissingKey` when AT_USERNAME and
+  AT_API_KEY are set and AT_CALLBACK_KEY is not; `createApp({ refuseCallbacks })` then answers 503 on `/ussd` and `/sms`
+  before the body; the start line says `callback=missing-key`; browser routes and `/health` work. With no sender they stay
+  open. `/ussd` and `/sms` are limited per address (300 a minute) and per phone number (30 a minute), and
+  `withShopLimit(store, 2000)` caps shops that are not demo shops (`ShopLimitError`, owner sentence `shopsFull`). The key
+  is still compared by `keyMatches` in constant time, and the check comes first. Tests: `test/server/routes.closed.test.ts`,
+  `bootstrap.test.ts`, `config.test.ts`, `test/store/limit.test.ts`.
+  - Files: `src/server/app.ts`, `src/server/config.ts`, `src/server/bootstrap.ts`, `src/server/routes/at.ts`, `src/server/errors.ts`, `src/server/constants.ts`, `src/store/limit.ts`, tests as above
+  - Requirements: 112, 113, 114, 115
+
+- [x] 11.5 **The shop found by id.** See `dialled-menu` task 34. Tested through `POST /ussd` with two phones and one session id
+  in `test/server/routes.closed.test.ts`.
+  - Files: `test/server/routes.closed.test.ts`
+  - Requirements: 117
+
+- [x] 11.6 **The item in "sold 45 3 bread".** See `text-messages` fixes. The browser route and `/sms` pass the pending question
+  through the existing pending stores unchanged (Postgres keeps the whole intent as JSON, so `item` is kept).
+  - Files: none in this spec
+  - Requirements: none new
+
+- [x] 11.7 **Skip link and intro text.** The skip link is in `browser-phone` task 65. The intro of this file said 9.3 and 9.4
+  stay unticked; 9.3 was ticked on 7 Nov 2026, so the intro now says so.
+  - Files: `.kiro/specs/server-and-store/tasks.md`
+  - Requirements: none
+
+- [x] 11.8 **Steering and docs match.** `.kiro/steering/tech.md` lists ADDRESS_SALT and the new route behaviour;
+  `docs/run-the-demo.md` has the new limits, the 503, the variable, the second migration and the new start line;
+  `docs/judges.md` says only the start buttons make a demo shop and that demo shops are cleared away after about a week.
+  - Files: `.kiro/steering/tech.md`, `docs/run-the-demo.md`, `docs/judges.md`
+  - Requirements: 110
+
+- [x] 11.9 **Run the Postgres suites again (done by a person with a test database).** With TEST_DATABASE_URL set to a direct
+  Neon or local database, run `npx vitest run test/store test/scripts` and check that the suites are not skipped and pass. The new
+  parts that only a real database can check: `deleteExpiredDemoShops` in the store contract (reversals, foreign keys,
+  `for update`), the `demo_quota` table rules and `claimCall` with eight simultaneous claims (advisory lock), the
+  migration applying `002_demo_quota.sql` after `001_init.sql`, and `hashtextextended` (PostgreSQL 11 or later). Then run
+  `npm run db:migrate` against the live database before the next deploy, because the app now reads `demo_quota`.
+  - Run 7 Nov 2026 against a Neon test branch: 99 test files, 2,098 tests passed, none skipped.
+  - Files: none
+  - Requirements: 104, 108, 109

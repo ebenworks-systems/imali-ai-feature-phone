@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createShop } from '../../src/core/shops/types.js';
 import { createSaleRecord } from '../../src/core/records/types.js';
 import { MemoryStore } from '../../src/store/memory/store.js';
-import { DEMO_PHONE, OTHER_DEMO_PHONE, captureErrors, makeApp, postForm, postJson } from './helpers.js';
+import { DEMO_PHONE, OTHER_DEMO_PHONE, captureErrors, makeApp, makeShopApp, postForm, postJson } from './helpers.js';
 
 const RATE = 'Too many requests. Please wait a minute and try again.';
 const FULL = 'This shop book is full. Please start a new demo shop.';
@@ -11,7 +11,7 @@ const smsOf = (app: Parameters<typeof postJson>[0], phone: string, text = 'today
 
 describe('the 60 requests a minute per phone number (browser routes)', () => {
   it('lets 60 calls through and refuses the 61st with 429, Retry-After and a plain sentence', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp({}, [DEMO_PHONE, OTHER_DEMO_PHONE]);
     for (let i = 0; i < 60; i += 1) expect((await smsOf(app, DEMO_PHONE)).status).toBe(200);
     const refused = await smsOf(app, DEMO_PHONE);
     expect(refused.status).toBe(429);
@@ -21,7 +21,7 @@ describe('the 60 requests a minute per phone number (browser routes)', () => {
   });
 
   it('does not count the refused request toward the 60', async () => {
-    const { app, clock } = makeApp();
+    const { app, clock } = await makeShopApp({}, [DEMO_PHONE, OTHER_DEMO_PHONE]);
     for (let i = 0; i < 60; i += 1) await smsOf(app, DEMO_PHONE);
     clock.advance(30_000);
     for (let i = 0; i < 5; i += 1) expect((await smsOf(app, DEMO_PHONE)).status).toBe(429);
@@ -30,13 +30,13 @@ describe('the 60 requests a minute per phone number (browser routes)', () => {
   });
 
   it('does not affect another number', async () => {
-    const { app } = makeApp();
+    const { app } = await makeShopApp({}, [DEMO_PHONE, OTHER_DEMO_PHONE]);
     for (let i = 0; i < 61; i += 1) await smsOf(app, DEMO_PHONE);
     expect((await smsOf(app, OTHER_DEMO_PHONE)).status).toBe(200);
   });
 
   it('works again after the clock moves 61 seconds', async () => {
-    const { app, clock } = makeApp();
+    const { app, clock } = await makeShopApp({}, [DEMO_PHONE, OTHER_DEMO_PHONE]);
     for (let i = 0; i < 61; i += 1) await smsOf(app, DEMO_PHONE);
     expect((await smsOf(app, DEMO_PHONE)).status).toBe(429);
     clock.advance(61_000);
@@ -75,16 +75,14 @@ describe('the 60 requests a minute per phone number (browser routes)', () => {
     expect((await postJson(app, '/api/phone/demo', { phone: DEMO_PHONE }, { 'x-forwarded-for': '198.51.100.1' })).status).toBe(201);
   });
 
-  it('does not limit the Africa\'s Talking routes', async () => {
-    const { app } = makeApp();
-    for (let i = 0; i < 75; i += 1) {
+  it("keeps the Africa's Talking routes out of the browser count: they have their own limits (limits.at.test.ts)", async () => {
+    const { app } = await makeShopApp();
+    for (let i = 0; i < 25; i += 1) {
       const res = await postForm(app, '/sms', { from: '+254711000000', text: 'today' });
       expect(res.status).toBe(200);
     }
-    for (let i = 0; i < 75; i += 1) {
-      const res = await postForm(app, '/ussd', { sessionId: `S${i}`, serviceCode: '*384*46254#', phoneNumber: '+254711000000', text: '' });
-      expect(res.status).toBe(200);
-    }
+    for (let i = 0; i < 60; i += 1) expect((await smsOf(app, DEMO_PHONE)).status).toBe(200);
+    expect((await smsOf(app, DEMO_PHONE)).status).toBe(429);
   });
 });
 

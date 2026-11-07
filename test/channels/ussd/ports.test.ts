@@ -184,6 +184,31 @@ describe('ports: createShop()', () => {
     expect(ports.shop).toEqual(other);
   });
 
+  it("never hands over another phone's shop when the session id is already taken", async () => {
+    // The client chooses the session id and the shop id is made from it. Phone B dials with phone A's session id.
+    const store = new MemoryStore();
+    const OTHER_PHONE = '+27000005678';
+    const first = makePorts({ store, shop: null, sessionId: 'SAME', phone: DEMO_PHONE, now: NOW });
+    const shopA = await first.createShop('Shop of A', 3);
+
+    const second = makePorts({ store, shop: null, sessionId: 'SAME', phone: OTHER_PHONE, now: NOW });
+    await expect(second.createShop('Shop of B', 1)).rejects.toMatchObject({ name: 'ShopAlreadyExistsError' });
+    expect(second.shop).toBeNull();
+
+    // Nothing changed for either phone.
+    expect(await store.findShopByPhone(DEMO_PHONE)).toEqual(shopA);
+    expect(await store.findShopByPhone(OTHER_PHONE)).toBeNull();
+  });
+
+  it("still uses the caller's own shop when the session id is taken by another phone's shop", async () => {
+    const store = new MemoryStore();
+    const OTHER_PHONE = '+27000005678';
+    await seedShop(store, { id: shopIdFor('SAME'), name: 'Shop of A', phone: DEMO_PHONE });
+    const own = await seedShop(store, { id: 'shop_other_id', name: 'Shop of B', phone: OTHER_PHONE });
+    const ports = makePorts({ store, shop: null, sessionId: 'SAME', phone: OTHER_PHONE, now: NOW });
+    expect(await ports.createShop('Again', 1)).toEqual(own);
+  });
+
   it('refuses a choice outside 1 to 7', async () => {
     const ports = makePorts({ store: new MemoryStore(), shop: null, sessionId: 'S1', phone: DEMO_PHONE, now: NOW });
     await expect(ports.createShop('Demo', 0)).rejects.toThrow(RangeError);

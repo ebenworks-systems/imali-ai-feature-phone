@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryPendingStore } from '../../src/channels/sms/pending.js';
 import { createApp } from '../../src/server/app.js';
 import { MemoryStore } from '../../src/store/memory/store.js';
-import { DEMO_PHONE, captureErrors, makeApp, postForm, postJson, throwingStore } from './helpers.js';
+import { DEMO_PHONE, captureErrors, makeApp, makeShopApp, postForm, postJson, throwingStore } from './helpers.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -103,7 +103,7 @@ describe('unknown paths', () => {
 
 describe('Cache-Control: no-store on /api/*', () => {
   it('is on the 200, 400, 404, 413, 429 and 500 answers', async () => {
-    const { app, clock } = makeApp();
+    const { app, clock } = await makeShopApp();
     // 200
     const ok = await postJson(app, '/api/phone/sms', { phone: DEMO_PHONE, text: 'today' });
     expect(ok.status).toBe(200);

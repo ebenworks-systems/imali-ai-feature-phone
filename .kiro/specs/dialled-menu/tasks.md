@@ -352,9 +352,19 @@ blocked. Tasks 31 and 32 use `handleText`.
   - Update "What works today" in `README.md` to say the dialled menu works, and leave the browser phone, the route and
     the live demo as "come next".
 
+## Fixes
+
+- [x] 34. **Do not hand over another phone's shop (requirement 54)**
+  - Files: `src/channels/ussd/ports.ts`, `test/channels/ussd/ports.test.ts`, `test/server/routes.closed.test.ts`
+  - Requirements: 54
+  - In `makePorts().createShop`, the fallback `findShopById(id)` is used only when the shop's `phone` equals the caller's
+    phone; otherwise the `ShopAlreadyExistsError` is rethrown (the menu then shows its generic error screen).
+  - Tests: two phones and one session id (the second phone's `createShop` rejects, `ports.shop` stays null, nothing changes
+    for either phone; fails on the old fallback), the caller's own shop is still used, and the same through `POST /ussd`.
+
 ## Success criteria
 
-1. All 33 tasks ticked; `npm run typecheck`, `npm test`, `npm run build` and `npm run check:screens` pass.
+1. All 34 tasks ticked; `npm run typecheck`, `npm test`, `npm run build` and `npm run check:screens` pass.
 2. Every screen in every test passes `ussdProblems` through the phone helper (prefix, ASCII, 182).
 3. A repeated or doubled saving request leaves one record; a repeated or doubled undo leaves one reversal.
 4. A sale by text shows in the menu's Today figure and the reverse (task 31).

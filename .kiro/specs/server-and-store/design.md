@@ -385,11 +385,13 @@ export { normalizePhone } from '../channels/phone.js';
 export function isDemoPhone(phone: string): boolean;     // /^\+2700000\d{4}$/ on a normalised number
 export function maskPhone(phone: string): string;        // first 4 characters + '***' + last 2
 export function clientAddress(headers: { get(name: string): string | null | undefined }): string;
-// first entry of x-forwarded-for (trimmed); else x-real-ip; else 'unknown'
+// x-real-ip (trimmed); else the LAST entry of x-forwarded-for (trimmed); else 'unknown'; cut to 64 characters
 ```
 
-`clientAddress` trusts `x-forwarded-for` because Vercel sets it on every request. Run anywhere else, a caller can write
-the header themselves, which only matters for the demo-shop limit and is accepted for a demo.
+`clientAddress` reads `x-real-ip` first because Vercel sets it to the address that connected. A proxy adds the address it
+saw to the end of `x-forwarded-for`, so the last entry is the platform's and the first is whatever the caller wrote; the
+first entry is never used (group 11). Run anywhere else (a local run, tests) both can be written by the caller or are
+missing, and the shared key `unknown` is used.
 
 ### `src/server/callbackKey.ts`
 
@@ -527,17 +529,24 @@ export function createApp(deps: AppDeps): Hono;
 
 What `createApp` does, in order:
 
-1. `const store = withRecordLimit(deps.store, MAX_RECORDS_PER_SHOP)`; `const now = deps.now ?? (() => new Date())`;
-   one `RateLimiter` for the browser routes (60 a minute per phone), one for demo creation (10 an hour per client
-   address), and `processed = deps.processed ?? new InMemoryProcessedTextStore({ now })`.
+1. `const store = withShopLimit(withRecordLimit(deps.store, MAX_RECORDS_PER_SHOP), 2000)` and `browserStore =
+   withoutShopCreation(store)`; `const now = deps.now ?? (() => new Date())`; rate limiters (all per instance): 60 a
+   minute per phone and 120 a minute per client address for the browser routes, 300 a minute per address and 30 a
+   minute per phone for `/ussd` and `/sms`; `quota = deps.quota ?? new InMemoryDemoQuotaStore({ now })` for the demo
+   limits that must hold across instances; `reader = withReaderLimit(deps.reader, 200 an hour)`; and
+   `processed = deps.processed ?? new InMemoryProcessedTextStore({ now })`.
 2. When `deps.callbackKey` is set (not blank): `app.use('/ussd', keyGuard)` and `app.use('/sms', keyGuard)`.
    `keyGuard` reads `c.req.query('k')`; if `keyMatches` is false it answers 403 `text/plain` `SENTENCES.forbidden` and
    does not call `next()`. It comes before the body limit, so a caller without the key never makes the app read a body.
-   With no key set there is no guard.
+   With no key set there is no guard, unless `deps.refuseCallbacks` is true (the entry sets it when the sender is set
+   and the key is not): then a guard answers 503 `SENTENCES.callbacksOff` and nothing else runs. After the key guard,
+   the address limiter (300 a minute) runs on `/ussd` and `/sms`, and the browser routes get the 120-a-minute address
+   limiter, both before the body limit.
 3. `bodyLimit({ maxSize: MAX_BODY_BYTES, onError })`: 413 with `SENTENCES.tooBig` (JSON under `/api/`, text elsewhere).
 4. A middleware that sets `Cache-Control: no-store` on `/api/*`.
 5. `registerAtRoutes(app, ctx)` and `registerBrowserRoutes(app, ctx)`, with
-   `ctx = { store, pending, processed, reader, smsSender, now, limiter, demoLimiter, demoLimits }`.
+   `ctx = { store, browserStore, pending, processed, reader, smsSender, now, limiter, addressLimiter, atAddressLimiter,
+   atPhoneLimiter, quota, demoPerAddress, demoWindowMs, maxDemoShopsPerDay, addressSalt, maxDemoShops }`.
 6. `GET /health`.
 7. `app.onError` and `app.notFound` (see Errors).
 
@@ -605,8 +614,8 @@ Every browser route starts with the same helper, `guardPhone(c, rawPhone)`:
 
 | Route | After `guardPhone` |
 |---|---|
-| `POST /api/phone/ussd` | validate `sessionId?` and `text?` are strings; latest segment over 182 -> 400; `handleUssd` with `serviceCode: DEMO_SERVICE_CODE` and `sessionId ?? crypto.randomUUID()`; answer `{ response, length, limit: 182 }` where `length = response.slice(4).length` |
-| `POST /api/phone/sms` | `text` must be a string; over 480 -> 400; `handleText`; answer `{ reply, length: reply.length, limit: 160 }` (no text is sent) |
+| `POST /api/phone/ussd` | validate `sessionId?` and `text?` are strings; latest segment over 182 -> 400; no shop for the number -> 404 `SENTENCES.noDemoShop`; `handleUssd` (with `browserStore`, which cannot make a shop) with `serviceCode: DEMO_SERVICE_CODE` and `sessionId ?? crypto.randomUUID()`; answer `{ response, length, limit: 182 }` where `length = response.slice(4).length` |
+| `POST /api/phone/sms` | `text` must be a string; over 480 -> 400; no shop for the number -> 404 `SENTENCES.noDemoShop`; `handleText` (with `browserStore`); answer `{ reply, length: reply.length, limit: 160 }` (no text is sent) |
 | `POST /api/phone/demo` | see "Demo shop limits" below; then body `{ phone? }` (an empty body counts as `{}`); with a phone: 409 if `findShopByPhone` finds one; without: try up to 20 times `'+2700000' + randomInt(0, 10000)` padded to 4 digits until none has a shop, else 503; `createShop(buildDemoShop(...))`, append `buildDemoRecords` in order; 201 `{ phone, shop: { name, currency, timeZone } }` |
 | `GET /api/ledger?phone=` | `findShopByPhone` or 404; `buildLedgerView` |
 | `GET /api/export?phone=` | `findShopByPhone` or 404; `generateExport(store, shop)` then `{ ...data, exportedAt: now().toISOString() }`; `JSON.stringify(data, null, 2)` |
@@ -620,23 +629,45 @@ make unlimited shops from one instance; with a phone it is the phone.
 
 ### Demo shop limits
 
-Two limits guard `POST /api/phone/demo`, in this order. The first runs before the body is read or the store is touched.
-The second runs after the body and the phone checks and before anything is created:
+Three things guard `POST /api/phone/demo`, in this order. The first runs before the body is read or any shop is read:
 
-1. **10 a hour per client address.** `demoLimiter.check(clientAddress(c.req.raw.headers))` with `limit` 10 and `windowMs`
-   one hour (`DEMO_CREATES_PER_HOUR`, `DEMO_WINDOW_MS`). A refusal is 429 with `Retry-After` and `SENTENCES.demoRate`.
-   Every call counts, including a call that later ends in 400 or 409, so the route cannot be used to probe numbers
-   without a cost. The count lives in the instance (like the other limiter), so on Vercel each warm instance counts
-   for itself. It slows a visitor down; it does not guarantee 10 an hour across instances.
-2. **5,000 demo shops in all.** `store.countShopsWithPhonePrefix(DEMO_PHONE_PREFIX)` at or above `MAX_DEMO_SHOPS` is a 503
-   with `SENTENCES.demoFull` and nothing is created. This count is in the database, so it holds across instances. The
-   count and the insert are two steps, so simultaneous calls can pass 5,000 by a few shops, as with the record cap.
+1. **10 a hour per client address, kept in the store.** `quota.claimCall(addressKey(clientAddress(headers), salt), { limit:
+   10, windowMs: one hour })` (`DEMO_CREATES_PER_HOUR`, `DEMO_WINDOW_MS`). A refusal is 429 with `Retry-After` and
+   `SENTENCES.demoRate`. Every allowed call counts, including a call that later ends in 400 or 409, so the route cannot
+   be used to probe numbers without a cost; a refused call does not count. The count is in the `DemoQuotaStore`
+   (memory in tests and local runs, the `demo_quota` table on Vercel), so it holds across instances (group 11).
+2. **Housekeeping, then two ceilings.** After the body and phone checks, `deleteExpiredDemoShops(now - 7 days, 200)` clears
+   away old demo shops (the memory pending store is cleared for the phone numbers it gives back). Then: the whole site
+   may make 1,000 demo shops in 24 hours (`quota.madeToday()`), and the store may hold 5,000 demo shops
+   (`countShopsWithPhonePrefix`); either gives 503 with `SENTENCES.demoFull` and nothing is created. The counts and the
+   insert are separate steps, so simultaneous calls can pass a ceiling by a few shops, as with the record cap.
+3. After a shop is made, `quota.noteMade(key)` adds it to the daily count.
 
 Then the usual checks run: the 60-a-minute phone limit (`demo-create`, or the phone), the demo-number shape, 409, 503
-for no free number, and creation. The first phone-number draw has at most a half-full range to hit (5,000 of 10,000
-numbers), so 20 tries fail only about one time in a million.
+for no free number, and creation. (The phone limit check runs before the housekeeping; see the code for the exact order.)
+
+`addressKey(address, salt)` is the SHA-256 of the salt, a `\0` and the address, as 64 lower-case hex digits
+(`src/server/address.ts`). The salt is ADDRESS_SALT or a fixed built-in one. Both quota stores and the table refuse a key
+of any other shape, so an address cannot be written to the database. `demo_quota (id, address_hash, kind, happened_at)`
+has the kinds `call` and `made`, indexes on `(address_hash, kind, happened_at)` and `(kind, happened_at)`, and is in
+`sql/002_demo_quota.sql`. `claimCall` runs in one transaction that takes `pg_advisory_xact_lock(hashtextextended(key, 0))`
+first, counts the `call` rows of the key inside the window, and inserts one row if there is room; old rows (24 hours)
+are removed first, 500 at a time, with `for update skip locked`.
 
 Body reading: `await c.req.json()` in a `try`; a failure or a non-object gives 400 `SENTENCES.badBody`.
+
+### Housekeeping and the caps on shops (group 11)
+
+- `LedgerStore.deleteExpiredDemoShops(createdBefore, maxShops): Promise<string[]>`. What a demo number is lives in
+  `src/store/demo.ts` (`DEMO_PHONE_PATTERN`, and the same pattern for SQL). The method takes no prefix and no id. Postgres:
+  `sql.begin`; `select id, phone from shops where phone ~ <pattern> and created_at < $1 order by created_at, id limit $2
+  for update`; `delete from pending_questions where phone in (...)`; `delete from records where shop_id in (...)`;
+  `delete from shops where id in (...) and phone ~ <pattern>`. Memory: the same on its maps. `limit` is clamped to 1,000.
+- `withShopLimit(store, 2000)` (in `src/store/limit.ts`): `createShop` for a number that is not a demo number counts
+  `countShopsWithPhonePrefix('')` minus the demo count and throws `ShopLimitError` at the cap, unless the shop (by phone or
+  id) already exists, in which case the store answers as before. A number that starts with `+2700000` but is not a whole
+  demo number is refused (`ShopLimitError`).
+- `withoutShopCreation(store)`: `createShop` throws `ShopCreationNotAllowedError`; every other method passes through.
 
 ### `src/server/config.ts`
 
@@ -647,6 +678,8 @@ export interface ServerConfig {
   geminiModel?: string;                                           // GEMINI_MODEL; used only when geminiApiKey is set
   at?: { username: string; apiKey: string; shortcode: string };   // shortcode: AT_SHORTCODE or '46254'
   callbackKey?: string;                                           // AT_CALLBACK_KEY
+  callbacksMissingKey?: true;                                     // the sender is set and AT_CALLBACK_KEY is not
+  addressSalt?: string;                                           // ADDRESS_SALT
   onVercel: boolean;                                              // VERCEL is set
   warnings: string[];                                             // e.g. 'AT_API_KEY is missing, so replies are not sent as texts'
 }
@@ -686,8 +719,9 @@ With `databaseUrl`: `connectPostgres`, `createPostgresStore`, `new PostgresPendi
 `shortcode` is AT_SHORTCODE or `46254`, and the host is the sandbox host when AT_USERNAME is `sandbox`. `callbackKey`
 comes from AT_CALLBACK_KEY and goes to `createApp`.
 
-`summary` looks like `store=postgres gemini=off sms=sandbox callback=key` (`sms` is `off`, `sandbox` or `live`;
-`callback` is `key` or `open`; never a value). The entries log `summary` and each warning once. If `onVercel` and there
+`summary` looks like `store=postgres gemini=off sms=sandbox callback=key salt=default` (`sms` is `off`, `sandbox` or
+`live`; `callback` is `key`, `missing-key` or `open`; `salt` is `default` or `set`; never a value). `callback=missing-key`
+means the sender is set and AT_CALLBACK_KEY is not, so `createApp` gets `refuseCallbacks: true`. The entries log `summary` and each warning once. If `onVercel` and there
 is no `databaseUrl`, a warning is added.
 
 ### `src/server/node.ts` and `src/server/main.ts`
@@ -771,11 +805,11 @@ settings. The function sees the original request path after a rewrite, so Hono r
 
 | Route | Input | Success | Refusals |
 |---|---|---|---|
-| `POST /ussd` | form: `sessionId`, `serviceCode`, `phoneNumber`, `text?`; query `k` when AT_CALLBACK_KEY is set | 200 `text/plain`, `CON ...` or `END ...` | 403 text (key); 400 text (missing field, bad phone); 200 `END ...` (input over 182, error); 413 |
-| `POST /sms` | form: `from`, `text`, `to?`, `date?`, `id?`; query `k` when AT_CALLBACK_KEY is set | 200 `text/plain`, the reply (also sent through AT when a sender is set); a repeated `id` gets the first reply | 403 text (key); 400 text; 200 sentence (text over 480, repeat still running, error); 413 |
-| `POST /api/phone/ussd` | JSON `{ phone, sessionId?, text? }` | 200 `{ response, length, limit: 182 }` | 400 (shape, not a demo number, input over 182); 413; 429; 500 |
-| `POST /api/phone/sms` | JSON `{ phone, text }` | 200 `{ reply, length, limit: 160 }` | 400 (shape, not a demo number, text over 480); 413; 429; 500 |
-| `POST /api/phone/demo` | JSON `{ phone? }` | 201 `{ phone, shop: { name, currency, timeZone } }` | 400; 409; 413; 429 (phone limit or 10 an hour per address); 503 (no free number, or 5,000 demo shops); 500 |
+| `POST /ussd` | form: `sessionId`, `serviceCode`, `phoneNumber`, `text?`; query `k` when AT_CALLBACK_KEY is set | 200 `text/plain`, `CON ...` or `END ...` | 403 text (key); 503 text (sender set, no key); 429 text (address); 400 text (missing field, bad phone); 200 `END ...` (input over 182, phone over 30 a minute, error); 413 |
+| `POST /sms` | form: `from`, `text`, `to?`, `date?`, `id?`; query `k` when AT_CALLBACK_KEY is set | 200 `text/plain`, the reply (also sent through AT when a sender is set); a repeated `id` gets the first reply | 403 text (key); 503 text (sender set, no key); 429 text (address or phone); 400 text; 200 sentence (text over 480, repeat still running, error); 413 |
+| `POST /api/phone/ussd` | JSON `{ phone, sessionId?, text? }` | 200 `{ response, length, limit: 182 }` | 400 (shape, not a demo number, input over 182); 404 (no shop on the number); 413; 429; 500 |
+| `POST /api/phone/sms` | JSON `{ phone, text }` | 200 `{ reply, length, limit: 160 }` | 400 (shape, not a demo number, text over 480); 404 (no shop on the number); 413; 429; 500 |
+| `POST /api/phone/demo` | JSON `{ phone? }` | 201 `{ phone, shop: { name, currency, timeZone } }` | 400; 409; 413; 429 (address or phone limit, or 10 an hour per address); 503 (no free number, 1,000 shops today, or 5,000 demo shops); 500 |
 | `GET /api/ledger?phone=` | query | 200 `LedgerView` | 400; 404; 429; 500 |
 | `GET /api/export?phone=` | query | 200 JSON download | 400; 404; 429; 500 |
 | `GET /health` | none | 200 `{ "ok": true }` | none |
@@ -790,6 +824,8 @@ All `/api/*` answers send `Cache-Control: no-store`. JSON errors look like `{ "e
 | `RecordLimitError` | 200 `END Sorry, something went wrong. Please dial again.` (see below) | 200 `This shop book is full. Please start a new demo shop.` | 500 `{ error }` with the full-book sentence (`/api/phone/ussd` answers 200 like `/ussd`) |
 | sender fails (after the reply is ready) | not used | logged; 200 with the reply | not used |
 | `k` missing or wrong while AT_CALLBACK_KEY is set | 403 text | 403 text | not used |
+| sender set and AT_CALLBACK_KEY not set | 503 text | 503 text | not used |
+| `ShopLimitError` (2,000 shops that are not demo shops) | 200 `END Sorry, something went wrong. Please dial again.` (the menu catches it) | 200 `Sorry, no new shops can be added right now. Please try again later.` | not used |
 | repeat of a text still being handled | not used | 200 `Got your message. Working on it.` | not used |
 | no route | 404 `Not found.` text | | 404 `{ error: "Not found." }` |
 
@@ -815,7 +851,8 @@ the path, calls `logError(path, error, phone)` and answers with `ownerSentence(e
 | `AT_API_KEY` | server | Africa's Talking API key | no text sender |
 | `GEMINI_MODEL` | server | Gemini model name; read only when `GEMINI_API_KEY` is set | the reader's default |
 | `AT_SHORTCODE` | server | `from` of sent texts | `46254` (the sandbox short code) |
-| `AT_CALLBACK_KEY` | server | when set, `POST /ussd` and `POST /sms` need `?k=<this value>` or answer 403 | those routes are open |
+| `AT_CALLBACK_KEY` | server | when set, `POST /ussd` and `POST /sms` need `?k=<this value>` or answer 403 | those routes are open when no sender is set, and answer 503 when the sender is set |
+| `ADDRESS_SALT` | server | the salt client addresses are hashed with before the demo limits are kept | a fixed built-in salt (`salt=default` on the start line) |
 | `TEST_DATABASE_URL` | Postgres tests | a direct (not pooled) connection to a database the tests may use | those tests skip |
 | `VERCEL` | set by Vercel | used only for the memory-store warning | |
 
@@ -952,9 +989,14 @@ How they work:
 - **Retries.** Africa's Talking can repeat an SMS callback. The route now remembers the message id and answers the
   repeat from the stored reply. A function that dies after the claim and before the reply leaves a claim that answers
   "working" until it expires (48 hours).
-- **Demo shops.** Each costs 18 rows (the shop and 17 records); 5,000 shops is about 90,000 rows. The cap is counted in
-  the database. The 10-an-hour limit per address and the 60-per-minute limit on `demo-create` are per instance. The
-  address comes from `x-forwarded-for`, which Vercel sets; a caller that talks to the Node server directly could write
-  it, which does not matter for a local run.
+- **Demo shops.** Each costs 18 rows (the shop and 17 records); 5,000 shops is about 90,000 rows. The cap, the 10 an hour
+  per address and the 1,000 a day are counted in the database; demo shops are cleared away after about 5 days (their
+  `createdAt` is two days before they are made). The 60-per-minute limit on `demo-create`, the 120 a minute per address
+  and the limits on `/ussd` and `/sms` are per instance. The address comes from `x-real-ip` and the last entry of
+  `x-forwarded-for`; a caller that talks to the Node server directly could write both, which does not matter for a local
+  run. A demo number can still be signed up through `/ussd` or `/sms` by someone who has the callback key (those routes
+  are for Africa's Talking). The 7-day clean-up removes those shops too, but the cap of 5,000 is checked only when a demo
+  shop is made through `POST /api/phone/demo`, so such sign-ups are held back by the key and the limits on `/ussd` and
+  `/sms`, not by that cap.
 - **The 2,000-record cap is check-then-insert** and can be passed by a few concurrent writes.
 - **The rate limit is per instance** (requirement 46).

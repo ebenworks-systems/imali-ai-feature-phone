@@ -85,7 +85,7 @@ PendingStore interface and in-memory implementation for storing ambiguous-amount
 ```typescript
 export interface PendingQuestion {
   kind: 'ambiguous' | 'largeAmount';
-  intent?: Intent;
+  intent?: Intent;                 // for 'ambiguous': { kind: 'ambiguous', options, base, item? } - the item is kept for either answer
   possibleAmounts?: Array<{ cents: number; formatted: string }>;
   largeAmount?: number;
   createdAt: Date;

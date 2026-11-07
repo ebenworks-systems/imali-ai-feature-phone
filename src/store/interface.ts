@@ -98,4 +98,15 @@ export interface LedgerStore {
    * The prefix is plain text: no character in it has a special meaning.
    */
   countShopsWithPhonePrefix(prefix: string): Promise<number>;
+  /**
+   * Housekeeping of invented demo data (not an edit of anyone's records): removes the demo shops made before
+   * `createdBefore`, oldest first, at most `maxShops` of them (never more than MAX_DEMO_SHOPS_PER_SWEEP), together
+   * with all their records and any question waiting for their phone number, and returns the phone numbers removed.
+   *
+   * A demo shop is a shop whose phone number is `+2700000` and four digits (src/store/demo.ts). The store decides
+   * that itself; the caller cannot widen it. A shop on any other number, of any age, is never removed. This is the
+   * only way the store removes a record, and it never removes a single record on its own: a shop goes with all its
+   * records or not at all. Postgres does it in one transaction.
+   */
+  deleteExpiredDemoShops(createdBefore: Date, maxShops: number): Promise<string[]>;
 }

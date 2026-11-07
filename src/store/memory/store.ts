@@ -2,6 +2,7 @@
 
 import type { Shop } from '../../core/shops/types.js';
 import type { Record, ReversalRecord } from '../../core/records/types.js';
+import { isDemoNumber, MAX_DEMO_SHOPS_PER_SWEEP } from '../demo.js';
 import {
   LedgerStore,
   DuplicateRecordError,
@@ -101,6 +102,32 @@ export class MemoryStore implements LedgerStore {
       if (shop.phone.startsWith(prefix)) count += 1;
     }
     return count;
+  }
+
+  async deleteExpiredDemoShops(createdBefore: Date, maxShops: number): Promise<string[]> {
+    const cutoff = createdBefore.getTime();
+    const limit = Number.isFinite(maxShops) ? Math.min(Math.max(0, Math.floor(maxShops)), MAX_DEMO_SHOPS_PER_SWEEP) : 0;
+    if (!Number.isFinite(cutoff) || limit === 0) return [];
+
+    // Demo numbers only (the store decides, not the caller), older than the cutoff, oldest first.
+    const doomed = [...this.shops.values()]
+      .filter((shop) => isDemoNumber(shop.phone) && new Date(shop.createdAt).getTime() < cutoff)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .slice(0, limit);
+
+    for (const shop of doomed) {
+      for (const record of this.recordsByShop.get(shop.id) ?? []) {
+        this.records.delete(record.id);
+        if (record.kind === 'reversal') {
+          this.reversalsByRecordId.delete(record.reversesRecordId);
+          this.reverseIndexByRecordId.delete(record.reversesRecordId);
+        }
+      }
+      this.recordsByShop.delete(shop.id);
+      this.shops.delete(shop.id);
+      this.shopsByPhone.delete(shop.phone);
+    }
+    return doomed.map((shop) => shop.phone);
   }
 
   /**

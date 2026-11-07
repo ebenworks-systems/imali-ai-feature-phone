@@ -2,7 +2,7 @@
 // This file only draws, listens, sets timers, calls the api helper and uses localStorage.
 // Every rule it needs lives in ledger-logic.js. All server and owner text goes in with textContent.
 
-import { ApiError, ROUTES, exportUrl, ledgerUrl } from './api.js';
+import { ApiError, ROUTES, exportUrl, isShopGone, ledgerUrl } from './api.js';
 import {
   DEFAULT_TIME_ZONE,
   currencyLabel,
@@ -264,7 +264,7 @@ export function initLedger({ root, api, storage, random, onShop, onData = () => 
       onData(data);
     } catch (error) {
       if (phone !== forPhone) return;
-      if (error instanceof ApiError && error.kind === 'http' && error.status === 404) {
+      if (isShopGone(error)) {
         forgetShop();
         return;
       }
@@ -397,6 +397,13 @@ export function initLedger({ root, api, storage, random, onShop, onData = () => 
 
   return {
     refresh,
+    /**
+     * The server said there is no demo shop on `forPhone` (a 404 from the ussd or sms route): go back to the first-visit
+     * state, as a 404 from the ledger does. Ignored when the page has moved on to another number.
+     */
+    forget(forPhone) {
+      if (phone === forPhone) forgetShop();
+    },
     phone: () => phone,
     timeZone: () => data?.shop.timeZone ?? DEFAULT_TIME_ZONE,
   };
