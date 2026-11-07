@@ -52,8 +52,9 @@ over its limit or not plain ASCII.
 
 ## Outside code
 
-The project uses only the npm packages listed in `package.json` (TypeScript, Vitest, fast-check and the Node.js type
-definitions). No code was copied from other projects.
+The project uses only the npm packages listed in `package.json`: `hono`, `@hono/node-server` and `postgres` to run, and
+TypeScript, Vitest, fast-check and the Node.js type definitions to build and test. No code was copied from other
+projects.
 
 ## Licence
 

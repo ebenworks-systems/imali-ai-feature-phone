@@ -3,72 +3,98 @@
 Each task names its files and the requirements it meets (numbers from `requirements.md`). Every module gets its
 tests in the same task. Do the groups in order; inside a group, in order.
 
-Three pieces come from other specs and may not exist yet. Tasks marked **[needs handlers]**, **[needs pending]** or
-**[needs reader]** wait for them. Do not write stand-ins for them; do the tasks that do not need them first.
+`handleUssd`, `handleText`, `PendingStore` and `GeminiReader` are all finished, so no task waits for another spec.
+Route tests that check exactly what the app passes to a handler replace the handler with `vi.mock`; the whole-session
+tests in group 7 use the real handlers.
+
+Tasks 9.3 and 9.4 need a person with a test database and with the Vercel and Neon accounts. They stay unticked until
+that person has done them.
 
 ## 0. Before you start
 
-- [ ] 0.1 **Check what the other specs have delivered.** Read, do not change:
-  `src/channels/index.ts` (exports `handleUssd`), `src/channels/sms/handler.ts` (exports `handleText`),
-  `src/channels/sms/pending.ts` (exports `PendingStore`, `PendingQuestion`, `InMemoryPendingStore`),
-  `src/ai/reader.ts` (exports `ModelReader`, `GeminiReader`). Write down which are missing.
+- [x] 0.1 **Check what the other specs have delivered.** Read, do not change:
+  `src/channels/index.ts` (exports `handleUssd` and `handleText`), `src/channels/sms/pending.ts` (exports
+  `PendingStore`, `PendingQuestion`, `InMemoryPendingStore`), `src/channels/phone.ts` (exports `normalizePhone`),
+  `src/ai/reader.ts` (exports `ModelReader`, `GeminiReader`, which takes `{ apiKey, model? }`),
+  `src/store/interface.ts` (has `DuplicateRecordError` and `ShopAlreadyExistsError`) and how
+  `src/channels/ussd/actions.ts` guards a repeated save (a record id made from the session, refused by the store).
+  Write down anything missing; nothing is expected to be.
   - Files: none
-  - Requirements: 14, 18, 65 (their entry points)
-  - Blocked by a missing piece: 3.8 [needs pending], 5.2 to 5.5 and 5.9 [needs handlers], 6.1 [needs pending, reader],
-    6.3, 7.1 and 7.2 [needs handlers].
+  - Requirements: 14, 18, 51, 65
 
 ## 1. Dependencies and project files
 
-- [ ] 1.1 **Add the three dependencies and the scripts.** `npm install hono @hono/node-server postgres`; add
-  scripts `dev`, `start` and `db:migrate` as in the design; keep `package-lock.json` in step.
-  - Files: `package.json`, `package-lock.json`
-  - Requirements: 6, 3
+- [x] 1.1 **Update `package.json` and `.gitignore`.** `npm install hono @hono/node-server postgres` and keep the
+  `package-lock.json` in step. Rename the package to `imali-ai-feature-phone`, set `"private": true`, set
+  `"engines": { "node": "22.x" }`, keep `hono` on the 4.x line (`^4.x.y`), and add the scripts `dev`, `start` and
+  `db:migrate` as in the design. Point `main` and `types` at `dist/src/`. Add a line `.vercel` to `.gitignore`.
+  `dependencies` holds only `hono`, `@hono/node-server` and `postgres`. A test reads `package.json` and `.gitignore`
+  and checks each of these.
+  - Files: `package.json`, `package-lock.json`, `.gitignore`, `test/server/package.test.ts`
+  - Requirements: 6, 3, 96
 
-- [ ] 1.2 **Let the compiler see `api/`.** Set `rootDir` to `.` and `include` to `src/**/*` and `api/**/*`. Run
-  `npm run typecheck` and `npm run build`; both must still pass, and the build output must be under `dist/src/`.
-  - Files: `tsconfig.json`
+- [x] 1.2 **Let the compiler see `api/`.** Set `rootDir` to `.` and `include` to `src/**/*` and `api/**/*`. The build
+  output moves under `dist/src/`, so change the three imports and the file check in `scripts/check-screens.mjs` to
+  `dist/src/channels/...`. Run `npm run typecheck`, `npm run build` and `npm run check:screens`; all three must pass.
+  - Files: `tsconfig.json`, `scripts/check-screens.mjs`
   - Requirements: 5
 
-- [ ] 1.3 **List every variable in `.env.example`.** DATABASE_URL, GEMINI_API_KEY, AT_USERNAME, AT_API_KEY,
-  AT_SHORTCODE, PORT, TEST_DATABASE_URL, each `NAME=` with nothing after it.
+- [x] 1.3 **List every variable in `.env.example`.** DATABASE_URL, GEMINI_API_KEY, GEMINI_MODEL, AT_USERNAME,
+  AT_API_KEY, AT_SHORTCODE, AT_CALLBACK_KEY, PORT, TEST_DATABASE_URL, each `NAME=` with nothing after it.
   - Files: `.env.example`
   - Requirements: 11
 
-## 2. Store interface, memory store, record cap
+## 2. Store interface, memory store, record cap, processed texts
 
-- [ ] 2.1 **Extend the store interface.** Add `AppendOptions`, the optional second argument of `appendRecord`,
-  `DuplicateSaveError` and `ShopPhoneTakenError` (with `name` set, as `RecordAlreadyReversedError` does), and update
-  the comments. Re-export the two errors from `src/core/index.ts` next to `RecordAlreadyReversedError`.
-  - Files: `src/store/interface.ts`, `src/core/index.ts`
-  - Requirements: 51, 52, 53
+- [x] 2.1 **Extend the store interface.** Add `countShopsWithPhonePrefix(prefix)` to `LedgerStore` and update the
+  comments on `appendRecord` and `createShop` to say what the Postgres store must also do (id checked first;
+  `DuplicateRecordError`; `ShopAlreadyExistsError` for the id or the phone). No new error classes: the two that the
+  dialled menu uses are the guard.
+  - Files: `src/store/interface.ts`
+  - Requirements: 51, 52, 95
 
-- [ ] 2.2 **Teach `MemoryStore` the new rules.** `saveKey` per shop throws `DuplicateSaveError` and keeps the first
-  record; `createShop` with a taken phone throws `ShopPhoneTakenError` and keeps the first shop; `listRecords`
-  returns a new array. Add tests for each to `test/store/memory/store.test.ts`.
+- [x] 2.2 **Teach `MemoryStore` the two missing rules.** `countShopsWithPhonePrefix`; `listRecords` returns a new array
+  also when there is no `since`. Add tests to `test/store/memory/store.test.ts`: a returned array can be changed
+  without changing the store, `generateExport` leaves the store's own order alone, and the count is right for a
+  matching prefix, a prefix nobody has and the empty store. (Its duplicate-id and duplicate-phone behaviour is already
+  tested there.)
   - Files: `src/store/memory/store.ts`, `test/store/memory/store.test.ts`
-  - Requirements: 51, 52, 53
+  - Requirements: 53, 95
 
-- [ ] 2.3 **Move the store checks into a shared contract.** Create `runLedgerStoreContract(label, harness)` holding the
-  checks now in `test/store/memory/store.test.ts` plus: duplicate phone, `saveKey`, append order with equal time
-  stamps, a new array from `listRecords`, inclusive `since`, `Number.MAX_SAFE_INTEGER` round trip. The memory test
-  file calls it with a harness that returns a new `MemoryStore`. The file is not named `*.test.ts`, so Vitest does
-  not run it alone.
+- [x] 2.3 **Move the store checks into a shared contract.** Create `runLedgerStoreContract(label, harness)` holding the
+  checks now in `test/store/memory/store.test.ts` plus: the same record id twice, a repeated reversal with the same id
+  (`DuplicateRecordError`), a second reversal with a new id (`RecordAlreadyReversedError`), duplicate shop id and
+  duplicate phone (`ShopAlreadyExistsError`), `countShopsWithPhonePrefix`, append order with equal time stamps, a new
+  array from `listRecords`, inclusive `since`, `Number.MAX_SAFE_INTEGER` round trip. Every check creates its shop
+  before it appends. The memory test file calls it with a harness that returns a new `MemoryStore`. The file is not
+  named `*.test.ts`, so Vitest does not run it alone.
   - Files: `test/store/contract.ts`, `test/store/memory/store.test.ts`
-  - Requirements: 75, 53, 51, 52
+  - Requirements: 75, 53, 51, 52, 95
 
-- [ ] 2.4 **Write the record cap.** `RecordLimitError` and `withRecordLimit(store, max)`; tests with a small `max`:
-  the record that reaches the cap is refused with the error, other shops are not affected, `options` pass through,
-  reads pass through.
+- [x] 2.4 **Write the record cap.** `RecordLimitError` and `withRecordLimit(store, max)`; tests with a small `max`:
+  the record that reaches the cap is refused with the error, other shops are not affected, reads and
+  `countShopsWithPhonePrefix` pass through.
   - Files: `src/store/limit.ts`, `test/store/limit.test.ts`
   - Requirements: 47
 
+- [x] 2.5 **Write the processed-text store (memory).** `ProcessedTextStore`, `TextClaim`, `PROCESSED_TEXT_TTL_MS` and
+  `InMemoryProcessedTextStore`. Put the checks in `test/store/processed.ts` as `runProcessedTextContract(label, harness)`
+  (not run alone) and call it from `test/store/processed.test.ts`: first claim is `new`; a second claim before `finish`
+  is `working`; after `finish` it is `done` with the same reply; the same id from
+  another phone is separate; two claims started together (`Promise.all`) give exactly one `new`; an entry 47 hours old is
+  kept and one 49 hours old is deleted by the next claim (moving clock).
+  - Files: `src/store/processed.ts`, `test/store/processed.ts`, `test/store/processed.test.ts`
+  - Requirements: 85, 86, 87, 88, 89, 90
+
 ## 3. Postgres store
 
-- [ ] 3.1 **Write the migration.** Copy the schema from the design exactly, including the constraint and index names.
+- [x] 3.1 **Write the migration.** Copy the schema from the design exactly, including the constraint and index names
+  (`records_pkey`, `shops_pkey`, `shops_phone_unique`, `records_one_reversal_per_record`) and the `processed_texts`
+  table. There is no save-key column.
   - Files: `sql/001_init.sql`
-  - Requirements: 57, 60, 61, 62
+  - Requirements: 57, 60, 61, 62, 89
 
-- [ ] 3.2 **Write the migration script.** `applyMigrations(sql, dir)` is exported and returns the names it applied;
+- [x] 3.2 **Write the migration script.** `applyMigrations(sql, dir)` is exported and returns the names it applied;
   the script runs it only when started directly. It creates `schema_migrations`, applies each unapplied file in name
   order inside `sql.begin`, prints `applied <name>` or `Nothing to apply.`, and exits 1 with a plain message when
   DATABASE_URL is empty, without printing its value. Add a test that starts the script with an empty environment and
@@ -76,75 +102,89 @@ Three pieces come from other specs and may not exist yet. Tasks marked **[needs 
   - Files: `scripts/migrate.mjs`, `test/scripts/migrate.test.ts`
   - Requirements: 57, 58, 59
 
-- [ ] 3.3 **Write the client.** `connectPostgres(url)` with `max: 3`, `prepare: false`, `connect_timeout: 10`,
+- [x] 3.3 **Write the client.** `connectPostgres(url)` with `max: 3`, `prepare: false`, `connect_timeout: 10`,
   `idle_timeout: 20`, no notices; `closePostgres(sql)`. A test checks the options passed to `postgres` with `vi.mock`,
   so no connection is made.
   - Files: `src/store/postgres/client.ts`, `test/store/postgres/client.test.ts`
   - Requirements: 64, 54
 
-- [ ] 3.4 **Write `PostgresStore`: shops and row mapping.** `createShop` (maps `shops_phone_unique` to
-  `ShopPhoneTakenError`), `findShopById`, `findShopByPhone`; `toSafeInt` that throws on a value that is not a safe
-  integer; `rowToShop`. Unit-test `toSafeInt` and `rowToShop` without a database.
+- [x] 3.4 **Write `PostgresStore`: shops and row mapping.** `createShop` (maps `shops_pkey` and `shops_phone_unique` to
+  `ShopAlreadyExistsError`), `findShopById`, `findShopByPhone`, `countShopsWithPhonePrefix`; `toSafeInt` that throws on
+  a value that is not a safe integer; `rowToShop`. Unit-test `toSafeInt` and `rowToShop` without a database.
   - Files: `src/store/postgres/store.ts`, `test/store/postgres/mapping.test.ts`
-  - Requirements: 54, 55, 56, 52, 61
+  - Requirements: 54, 55, 56, 52, 61, 95
 
-- [ ] 3.5 **Write `PostgresStore`: records.** `appendRecord` (nulls for missing fields, error mapping by constraint
-  name, any other error rethrown), `findRecordById`, `findReversalOf`, `listRecords` ordered by `seq`, `rowToRecord`
-  for all five kinds with no `null` fields in the result. Unit-test `rowToRecord` for each kind and the error
-  mapping with a fake `PostgresError`.
+- [x] 3.5 **Write `PostgresStore`: records.** `appendRecord` as one `insert ... on conflict (id) do nothing returning id`
+  (no row back means `DuplicateRecordError`; a `23505` on `records_one_reversal_per_record` means
+  `RecordAlreadyReversedError`; `records_pkey` means `DuplicateRecordError`; any other error is rethrown), nulls for
+  missing fields, `findRecordById`, `findReversalOf`, `listRecords` ordered by `seq`, `rowToRecord` for all five kinds
+  with no `null` fields in the result. Unit-test `rowToRecord` for each kind and the error mapping with a fake
+  `PostgresError`, and with a fake `sql` that returns no row, check that the id conflict becomes `DuplicateRecordError`.
   - Files: `src/store/postgres/store.ts`, `test/store/postgres/mapping.test.ts`
-  - Requirements: 54, 55, 56, 60, 61, 63, 53
+  - Requirements: 54, 55, 56, 51, 60, 61, 63, 53
 
-- [ ] 3.6 **Run the contract against Postgres.** `createTestDatabase(url)` in the test helper (throwaway schema,
+- [x] 3.6 **Run the contract against Postgres.** `createTestDatabase(url)` in the test helper (throwaway schema,
   `connection: { search_path }`, applies `sql/` through `applyMigrations`, `drop()`); `postgres/store.test.ts` calls
-  `runLedgerStoreContract` with a harness that truncates the three tables and returns the store. When
+  `runLedgerStoreContract` with a harness that truncates the four tables and returns the store. When
   TEST_DATABASE_URL is not set, use `describe.skip` with the name
   `PostgresStore contract (skipped: set TEST_DATABASE_URL to run)`.
   - Files: `test/helpers/pg.ts`, `test/store/postgres/store.test.ts`
   - Requirements: 75, 76, 77, 78
 
-- [ ] 3.7 **Test the table rules and the migration against Postgres.** Same skip rule as 3.6. Cases: each
+- [x] 3.7 **Test the table rules and the migration against Postgres.** Same skip rule as 3.6. Cases: each
   constraint of requirement 62 refuses a bad insert; `applyMigrations` applied twice returns the names the first
   time and an empty list the second; the unique reversal index refuses a second reversal even if two inserts race
-  (`Promise.all`).
+  (`Promise.all`); two simultaneous appends of the same record id leave one record and one `DuplicateRecordError`; a
+  repeated reversal with the same id gives `DuplicateRecordError`, not `RecordAlreadyReversedError`.
   - Files: `test/store/postgres/constraints.test.ts`
   - Requirements: 57, 58, 60, 61, 62, 76
 
-- [ ] 3.8 **Write `PostgresPendingStore`.** [needs pending] `get`, `set` (upsert, deletes expired rows), `clear`;
+- [x] 3.8 **Write `PostgresPendingStore`.** `get`, `set` (upsert, deletes expired rows), `clear`;
   injected `now` and `ttlMs`; `createdAt` restored as a `Date`. Postgres tests (same skip rule): set then get equal,
   second `set` replaces, `clear`, expiry with a moving clock (9 minutes still there, 11 gone), expired rows deleted
   by `set`, an ambiguous question with `possibleAmounts` and a large-amount question both round-trip.
   - Files: `src/store/postgres/pending.ts`, `test/store/postgres/pending.test.ts`
   - Requirements: 65, 66, 67, 76
 
-- [ ] 3.9 **Export the Postgres parts.** `src/store/postgres/index.ts` exports `connectPostgres`, `closePostgres`,
-  `PostgresStore`, `createPostgresStore`, `PostgresPendingStore`.
+- [x] 3.9 **Write `PostgresProcessedTextStore`.** `claim` (delete old rows, insert on conflict do nothing, read the
+  reply), `finish`; injected `now` and `ttlMs`. Unit-test with a fake `sql` that `claim` runs the insert and
+  maps the three answers (`new`, `working`, `done`). Postgres tests (same skip rule) call
+  `runProcessedTextContract` from 2.5 with a harness for Postgres.
+  - Files: `src/store/postgres/processed.ts`, `test/store/postgres/processed.test.ts`
+  - Requirements: 85, 86, 87, 88, 89, 90, 76
+
+- [x] 3.10 **Export the Postgres parts.** `src/store/postgres/index.ts` exports `connectPostgres`, `closePostgres`,
+  `PostgresStore`, `createPostgresStore`, `PostgresPendingStore`, `PostgresProcessedTextStore`.
   - Files: `src/store/postgres/index.ts`
   - Requirements: 54
 
 ## 4. Server helpers
 
-- [ ] 4.1 **Constants and phone helpers.** `constants.ts` as in the design; `normalizePhone`, `isDemoPhone`, `maskPhone`.
+- [x] 4.1 **Constants and phone helpers.** `constants.ts` as in the design; `isDemoPhone`, `maskPhone`,
+  `clientAddress`, and `normalizePhone` re-exported from `src/channels/phone.ts` (do not write a second one).
   Tests: `+27 00 000 1234`, `+27-00-000-1234`, `27000001234`, `(+27) 00 000 1234` normalise; `abc`, `12`, a 16-digit
   number give `null`; `isDemoPhone` accepts `+27000001234` and refuses `+27000011234`, `+2700000123`,
-  `+27000001234 5`, `+254711000000`; the mask never shows the middle digits. Also a test that every sentence in
-  `SENTENCES` is plain ASCII and shorter than 100 characters.
+  `+27000001234 5`, `+254711000000`; the mask never shows the middle digits; `clientAddress` takes the first entry of
+  `x-forwarded-for` (`203.0.113.7, 10.0.0.1` gives `203.0.113.7`), falls back to `x-real-ip`, then to `unknown`, and
+  treats a blank header as missing. Also a test that every sentence in `SENTENCES` is plain ASCII and shorter than
+  100 characters.
   - Files: `src/server/constants.ts`, `src/server/phone.ts`, `test/server/phone.test.ts`
-  - Requirements: 22, 27
+  - Requirements: 22, 27, 93
 
-- [ ] 4.2 **Rate limiter.** `createRateLimiter`. Tests with a movable clock: 60 allowed, the 61st refused with
+- [x] 4.2 **Rate limiter.** `createRateLimiter`. Tests with a movable clock: 60 allowed, the 61st refused with
   `retryAfterSeconds`, a refused call does not extend the window, calls are allowed again after the window, two keys
-  are separate, expired keys are removed past 10,000 keys.
+  are separate, expired keys are removed past 10,000 keys; and a limiter with `limit` 10 and a one-hour window behaves
+  the same way (the demo limiter).
   - Files: `src/server/rateLimit.ts`, `test/server/rateLimit.test.ts`
-  - Requirements: 45, 46
+  - Requirements: 45, 46, 92
 
-- [ ] 4.3 **Error helpers.** `ownerSentence`, `logError`. Tests: `RecordLimitError` gives the full sentence, anything else
+- [x] 4.3 **Error helpers.** `ownerSentence`, `logError`. Tests: `RecordLimitError` gives the full sentence, anything else
   the generic one; `logError` writes one JSON line to `console.error` with the stack and a masked phone, and the line
   has no full phone number.
   - Files: `src/server/errors.ts`, `test/server/errors.test.ts`
   - Requirements: 48, 49
 
-- [ ] 4.4 **Africa's Talking sender.** `africasTalkingHost`, `createAfricasTalkingSender`. Tests with a fake `fetch`: URL
+- [x] 4.4 **Africa's Talking sender.** `africasTalkingHost`, `createAfricasTalkingSender`. Tests with a fake `fetch`: URL
   and host for `sandbox` and for another username, the `apiKey` and `Accept` headers, the form body fields
   (`from` is the short code), a 500 answer throws, a recipient with `statusCode` 403 throws, a never-ending fetch is
   aborted by the timeout (use a short `timeoutMs`), and no thrown message contains the key. Use the fake key
@@ -152,20 +192,21 @@ Three pieces come from other specs and may not exist yet. Tasks marked **[needs 
   - Files: `src/server/sender.ts`, `test/server/sender.test.ts`
   - Requirements: 68, 69, 70, 71, 78
 
-- [ ] 4.5 **Config.** `readConfig`, `readPort`, `ConfigError`. Tests: blank and spaces count as unset; both AT variables
+- [x] 4.5 **Config.** `readConfig`, `readPort`, `ConfigError`. Tests: blank and spaces count as unset; both AT variables
   give `at` with shortcode `46254`, `AT_SHORTCODE` overrides it; only one AT variable gives no `at` and a warning
-  that names the missing one and contains no value; `VERCEL` without DATABASE_URL adds the memory warning; PORT
-  `3000`, unset, `0`, `70000`, `abc` and `3000.5` behave as in requirement 4.
+  that names the missing one and contains no value; `GEMINI_MODEL` is read; `AT_CALLBACK_KEY` is read and trimmed;
+  `VERCEL` without DATABASE_URL adds the memory warning; PORT `3000`, unset, `0`, `70000`, `abc` and `3000.5` behave
+  as in requirement 4.
   - Files: `src/server/config.ts`, `test/server/config.test.ts`
-  - Requirements: 4, 9, 10, 11, 13
+  - Requirements: 4, 8, 9, 10, 11, 13, 82
 
-- [ ] 4.6 **Ledger view for the side panel.** `buildLedgerView`. Tests with `MemoryStore` and the demo records: today's
+- [x] 4.6 **Ledger view for the side panel.** `buildLedgerView`. Tests with `MemoryStore` and the demo records: today's
   figures, `date`, owes limited to 20 with `more`, last 20 records newest first, `reversed` flag, a negative money
   in hand formats with `-`, every `text` is ASCII.
   - Files: `src/server/views.ts`, `test/server/views.test.ts`
   - Requirements: 28, 29, 30
 
-- [ ] 4.7 **Demo data.** `buildDemoShop`, `buildDemoRecords` from the table in the design. Tests: 17 records in append
+- [x] 4.7 **Demo data.** `buildDemoShop`, `buildDemoRecords` from the table in the design. Tests: 17 records in append
   order; times never decrease and none is after `now`; today's records fall on today's local date at 00:05, 12:00 and
   23:59 local; earlier records fall on the two days before; Tendai R20, Rudo R30, Sipho R25 owed and today's sales R195
   after the reversal is applied; the phone, names and numbers are the invented ones; the shop name is at most 24
@@ -173,12 +214,19 @@ Three pieces come from other specs and may not exist yet. Tasks marked **[needs 
   - Files: `src/server/demo.ts`, `test/server/demo.test.ts`
   - Requirements: 35, 38
 
+- [x] 4.8 **Callback key check.** `keyMatches(given, expected)`: hashes both with SHA-256 and compares the digests with
+  `crypto.timingSafeEqual`. Tests: equal keys match; a different key, a key that differs in the last character, an
+  empty string, `undefined` and a longer or shorter key do not; `crypto.timingSafeEqual` is called (spy) even when
+  `given` is `undefined`.
+  - Files: `src/server/callbackKey.ts`, `test/server/callbackKey.test.ts`
+  - Requirements: 82, 83
+
 ## 5. The app and its routes
 
-In this group, route tests use `app.request()`, `MemoryStore`, `InMemoryPendingStore` (or a small fake with the same
-three methods until 0.1 is clear) and the fixed clock, and mock the two handlers with `vi.mock`.
+In this group, route tests use `app.request()`, `MemoryStore`, `InMemoryPendingStore`, `InMemoryProcessedTextStore` and
+the fixed clock, and replace the two handlers with `vi.mock` so they check exactly what the app passes in and out.
 
-- [ ] 5.1 **App skeleton.** `createApp`: record cap wrapper, default clock, body limit, `no-store` on `/api/*`,
+- [x] 5.1 **App skeleton.** `createApp`: record cap wrapper, default clock, body limit, `no-store` on `/api/*`,
   `GET /health`, `onError`, `notFound`, the shared `refuse` helper that picks JSON or text from the path. Tests:
   `/health` answers `{"ok":true}` and does not touch the store (a store whose methods throw); a 9 KB body gets 413 on
   `/ussd`, `/sms` and `/api/phone/sms`; an unknown path gets 404 in JSON under `/api/` and as text elsewhere; `no-store`
@@ -186,7 +234,17 @@ three methods until 0.1 is clear) and the fixed clock, and mock the two handlers
   - Files: `src/server/app.ts`, `test/server/health.test.ts`, `test/server/app.test.ts`
   - Requirements: 1, 2, 34, 40, 44, 49, 50
 
-- [ ] 5.2 **`POST /ussd`.** [needs handlers] Form parsing, the checks and the call to `handleUssd` as in the design.
+- [x] 5.2 **The callback key guard.** In `createApp`, when `callbackKey` is set, a guard on `/ussd` and `/sms` before the
+  body limit. Tests (`routes.key.test.ts`, handlers mocked): with the key set, `POST /ussd` and `POST /sms` with
+  `?k=<key>` reach the handler; with no `k`, a wrong `k`, an empty `k` and a key of another length each get 403
+  `text/plain` with the plain sentence, and the handler, the store, the processed-text store and the sender (all spies
+  or throwing fakes) are not called; the 403 comes before the body is read (a 9 KB body without the key gets 403, not
+  413); the 403 body does not contain the key; with no key set, both routes answer without `k`; a key of only spaces
+  counts as not set; `/health`, `/api/phone/sms` and the other browser routes never need the key.
+  - Files: `src/server/app.ts`, `test/server/routes.key.test.ts`
+  - Requirements: 82, 83, 84
+
+- [x] 5.3 **`POST /ussd`.** Form parsing, the checks and the call to `handleUssd` as in the design.
   Tests: the handler receives `sessionId`, `serviceCode`, the normalised phone, `text`, the fixed `now` and the
   store; the answer is 200 `text/plain` with the handler's `response`; a missing `text` becomes `''`; each missing
   field gives 400 without a handler call; a phone `+254711000000` is accepted; an input of 183 characters after the
@@ -195,7 +253,7 @@ three methods until 0.1 is clear) and the fixed clock, and mock the two handlers
   - Files: `src/server/routes/at.ts`, `test/server/routes.at.test.ts`
   - Requirements: 14, 15, 16, 17, 22, 41
 
-- [ ] 5.3 **`POST /sms`.** [needs handlers] Form parsing, the call to `handleText`, the sender. Tests: the handler
+- [x] 5.4 **`POST /sms`.** Form parsing, the call to `handleText`, the sender. Tests: the handler
   receives `phone`, `text`, `now`, the store, the pending store and the reader (pass a fake reader); the answer is
   200 `text/plain` with the reply; a missing `from` or `text` gives 400; text of 481 characters gets the "too long"
   reply without a handler call and that reply is also sent; with a fake sender the reply is sent to `from` once; with
@@ -204,7 +262,21 @@ three methods until 0.1 is clear) and the fixed clock, and mock the two handlers
   - Files: `src/server/routes/at.ts`, `test/server/routes.at.test.ts`
   - Requirements: 18, 19, 20, 21, 22, 42
 
-- [ ] 5.4 **Browser guard and `POST /api/phone/ussd`.** [needs handlers] `guardPhone` and the route in
+- [x] 5.5 **Repeated text callbacks.** In `POST /sms`: claim `(from, id)`, answer `done` and `working` without the
+  handler, `finish` before the send, the error sentence stored when the handler throws. Tests (in `routes.at.test.ts`, handler
+  mocked): the same `from` and `id` posted twice calls `handleText` once, sends one text, and answers the second time
+  with the first reply, even when the mock would now return something else; a different `id` runs again; the same `id`
+  from another number runs again; two posts started together (`Promise.all`) call the handler once; a post whose
+  handler is still waiting (a promise the test settles later) makes a second post answer the "working" sentence with
+  no handler call and no send; a handler that throws gives the error sentence, which is stored, so a second post gets the
+  same sentence and the handler runs once (a claim is never forgotten); a failing `finish` is logged and the reply is
+  still answered and sent; a failing sender does not stop the stored reply (a repeat is still answered from it); a missing `id`, an `id` of 101 characters and an `id` with a space are handled
+  without a claim (two posts call the handler twice); a text of 481 characters makes no claim;
+  `POST /api/phone/sms` makes no claim.
+  - Files: `src/server/routes/at.ts`, `test/server/routes.at.test.ts`
+  - Requirements: 85, 86, 87, 88, 89, 91
+
+- [x] 5.6 **Browser guard and `POST /api/phone/ussd`.** `guardPhone` and the route in
   `routes/browser.ts`. Tests: a valid call gives `{ response, length, limit: 182 }` with `length` counted after
   the prefix; the handler gets `serviceCode` `*384*46254#`; no `sessionId` gives a new id each call, and a given
   one is passed on; no `text` gives `''`; a non-JSON body, a JSON array, a number `phone` and a number `text` each
@@ -214,25 +286,25 @@ three methods until 0.1 is clear) and the fixed clock, and mock the two handlers
   - Files: `src/server/routes/browser.ts`, `test/server/routes.phone.test.ts`
   - Requirements: 23, 24, 26, 27, 43
 
-- [ ] 5.5 **`POST /api/phone/sms`.** [needs handlers] Tests: a valid call gives `{ reply, length, limit: 160 }`; the
+- [x] 5.7 **`POST /api/phone/sms`.** Tests: a valid call gives `{ reply, length, limit: 160 }`; the
   sender is never called, even when one is set; text of 481 characters gives 400; the demo-number check and the shape
-  checks of 5.4 apply.
+  checks of 5.6 apply.
   - Files: `src/server/routes/browser.ts`, `test/server/routes.phone.test.ts`
   - Requirements: 25, 26, 27, 43
 
-- [ ] 5.6 **`GET /api/ledger`.** Tests: a seeded shop gives the shape in the design with `{ cents, text }` money; no shop
+- [x] 5.8 **`GET /api/ledger`.** Tests: a seeded shop gives the shape in the design with `{ cents, text }` money; no shop
   gives 404; a non-demo number gives 400; a missing `phone` gives 400.
   - Files: `src/server/routes/browser.ts`, `test/server/routes.ledger.test.ts`
   - Requirements: 28, 29, 30, 31, 27
 
-- [ ] 5.7 **`GET /api/export`.** Tests: the body parses as JSON with `format` `imali-ai-ledger-export`, `version` 1,
+- [x] 5.9 **`GET /api/export`.** Tests: the body parses as JSON with `format` `imali-ai-ledger-export`, `version` 1,
   `exportedAt` equal to the fixed clock, the shop and all records including the reversal; the three headers are exact
   (filename uses the digits of the phone and the UTC date); the body is indented; the order of records in the store
   is unchanged afterwards; no shop gives 404; a non-demo number gives 400.
   - Files: `src/server/routes/browser.ts`, `test/server/routes.export.test.ts`
   - Requirements: 31, 32, 33, 27
 
-- [ ] 5.8 **`POST /api/phone/demo`.** Tests: no body, `{}` and an empty string body each create a shop with a demo
+- [x] 5.10 **`POST /api/phone/demo`.** Tests: no body, `{}` and an empty string body each create a shop with a demo
   number and 17 records and answer 201; a given free demo number is used; a given number that has a shop gives 409 and
   leaves the records as they were; a non-demo number gives 400; a store where every `findShopByPhone` finds a shop
   gives 503 after 20 tries; the new shop works with `GET /api/ledger`; the demo shop's own records pass through the
@@ -240,37 +312,54 @@ three methods until 0.1 is clear) and the fixed clock, and mock the two handlers
   - Files: `src/server/routes/browser.ts`, `test/server/routes.demo.test.ts`
   - Requirements: 35, 36, 37, 38, 39
 
-- [ ] 5.9 **Limits and error answers through the routes.** [needs handlers] Tests in `limits.test.ts`: 60 calls to
+- [x] 5.11 **Demo shop limits.** Per-address limit and the 5,000-shop cap on `POST /api/phone/demo`. Tests (in
+  `routes.demo.test.ts`; shrink the cap with `demoLimits` where a test needs a small number): the 10th call from
+  `x-forwarded-for: 203.0.113.7` passes and the 11th gets 429 with `Retry-After` in seconds and the plain sentence;
+  the refused call does not extend the window; another address is not affected; the first entry of
+  `203.0.113.7, 10.0.0.1` is the address (so `203.0.113.7, 10.0.0.2` counts for the same one); after the clock moves
+  61 minutes the address works again; calls with a phone number and calls that end in 409 count; a call with no
+  `x-forwarded-for` counts under `unknown`; a refused call makes no store call (a throwing store); with the cap at 3
+  and three demo shops in the store, the next call gets 503 with the plain sentence and no shop is created; a shop that
+  is not a demo number is not counted; at 2 of 3 the call succeeds.
+  - Files: `src/server/routes/browser.ts`, `test/server/routes.demo.test.ts`
+  - Requirements: 92, 93, 94, 95
+
+- [x] 5.12 **Limits and error answers through the routes.** Tests in `limits.test.ts`: 60 calls to
   `/api/phone/sms` from one number pass and the 61st gets 429 with `Retry-After`; another number is not affected;
   after the clock moves 61 seconds the number works again; the five browser routes share one count; two
   `/api/phone/demo` calls with no phone share the `demo-create` key; the Africa's Talking routes are not limited; a
-  shop seeded with 2,000 records refuses the next record on `/sms`, `/ussd` and `/api/phone/sms` with the
-  "shop book is full" sentence (use the real handlers if they are ready, otherwise a mocked handler that appends a
-  record). Tests in `errors.routes.test.ts`: a store that throws `Error('connection to db.internal:5432 failed
-  password authentication')` gives the plain sentence in each of the three shapes (`/ussd`, `/sms`, `/api/*`), the
-  response body and headers contain neither the message nor `at ` stack lines, and `console.error` received both.
+  shop seeded with 2,000 records refuses the next record: `/sms` and `/api/phone/sms` show the "shop book is full"
+  sentence, and `/ussd` and `/api/phone/ussd` show the menu's own plain `END Sorry, something went wrong.` screen
+  (the menu catches the error itself); nothing is saved (use the real handlers). Tests in `errors.routes.test.ts`: a store that throws
+  `Error('connection to db.internal:5432 failed password authentication')` gives the plain sentence in each of the
+  three shapes (`/ussd`, `/sms`, `/api/*`), the response body and headers contain neither the message nor `at ` stack
+  lines, and `console.error` received both.
   - Files: `test/server/limits.test.ts`, `test/server/errors.routes.test.ts`, `src/server/app.ts`
   - Requirements: 45, 46, 47, 48, 49, 74, 72
 
 ## 6. Entry points
 
-- [ ] 6.1 **`createAppFromEnv`.** [needs pending, reader] Builds the parts as in the design and returns
+- [x] 6.1 **`createAppFromEnv`.** Builds the parts as in the design and returns
   `{ app, parts, summary, warnings, close }`. Tests with a fake env: nothing set gives `MemoryStore`,
-  `InMemoryPendingStore`, no reader, no sender, `summary` `store=memory gemini=off sms=off`; `GEMINI_API_KEY` gives a
-  `GeminiReader`; both AT variables give a sender, `AT_USERNAME=sandbox` is reported as `sms=sandbox`; the summary and
-  warnings never contain a value; `DATABASE_URL` set gives Postgres parts (mock `src/store/postgres/index.js` so no
-  connection is made) and `close()` ends the pool; `VERCEL` without `DATABASE_URL` adds the warning.
+  `InMemoryPendingStore`, `InMemoryProcessedTextStore`, no reader, no sender, no callback key, `summary`
+  `store=memory gemini=off sms=off callback=open`; `GEMINI_API_KEY` gives a `GeminiReader`; `GEMINI_MODEL` without
+  `GEMINI_API_KEY` gives no reader; `GEMINI_MODEL` with the key reaches the reader (the reader's request URL, seen
+  through a fake `fetch`, names the model); both AT variables give a sender, `AT_USERNAME=sandbox` is reported as
+  `sms=sandbox` and sends to the sandbox host with `from` `46254`, `AT_SHORTCODE` changes `from`; the callback key
+  from `AT_CALLBACK_KEY` closes `/sms` (403 without `k`); the summary and warnings never contain a value;
+  `DATABASE_URL` set gives Postgres parts (mock `src/store/postgres/index.js` so no connection is made) and `close()`
+  ends the pool; `VERCEL` without `DATABASE_URL` adds the warning.
   - Files: `src/server/bootstrap.ts`, `test/server/bootstrap.test.ts`
-  - Requirements: 7, 8, 9, 10, 12, 13
+  - Requirements: 7, 8, 9, 10, 12, 13, 82
 
-- [ ] 6.2 **Node entry.** `createNodeApp` adds `serveStatic` after the routes; `main.ts` reads the port, serves with
+- [x] 6.2 **Node entry.** `createNodeApp` adds `serveStatic` after the routes; `main.ts` reads the port, serves with
   `@hono/node-server`, logs the summary and warnings, and closes on SIGINT and SIGTERM. A bad PORT prints the message
   and exits 1. Tests for `createNodeApp` with a temporary `public/` folder: `/` returns `index.html`; `/style.css`
   returns the file; an API route still wins over a file of the same name; an unknown GET gets 404.
   - Files: `src/server/node.ts`, `src/server/main.ts`, `test/server/node.test.ts`
   - Requirements: 3, 4, 50
 
-- [ ] 6.3 **Vercel entry.** [needs handlers] `api/index.ts` and `vercel.json` as in the design. Run `npm run typecheck`.
+- [x] 6.3 **Vercel entry.** `api/index.ts` and `vercel.json` as in the design. Run `npm run typecheck`.
   A test reads `vercel.json` and checks that the four rewrites exist, `outputDirectory` is `public`, and no
   rewrite sends a path to a file outside `api/`.
   - Files: `api/index.ts`, `vercel.json`, `test/server/vercel.test.ts`
@@ -278,24 +367,27 @@ three methods until 0.1 is clear) and the fixed clock, and mock the two handlers
 
 ## 7. Whole conversations through HTTP
 
-- [ ] 7.1 **A USSD session.** [needs handlers] Through `POST /ussd`, step by step with a fixed `sessionId`: first dial
-  shows the main menu with today's figure; record a sale and confirm; check the saved line; open "Who owes"; undo;
-  close the day. Repeat the session through `POST /api/phone/ussd` with a demo number. Check every screen: starts
-  `CON ` or `END `, at most 182 characters after the prefix, ASCII only. Use the steps `dialled-menu` defines.
+- [x] 7.1 **A USSD session.** Through `POST /ussd`, step by step with a fixed `sessionId`: first dial
+  shows the sign-up and then the main menu with today's figure; record a sale and confirm; check the saved line; open
+  "Who owes"; undo; close the day. Send the confirming request twice and check that one record exists. Repeat the
+  session through `POST /api/phone/ussd` with a demo number. Check every screen: starts `CON ` or `END `, at most 182
+  characters after the prefix, ASCII only. Use the steps `dialled-menu` defines.
   - Files: `test/server/conversation.test.ts`
   - Requirements: 73, 72
 
-- [ ] 7.2 **A text conversation.** [needs handlers] Through `POST /sms` from a new number (welcome, shop name), then
+- [x] 7.2 **A text conversation.** Through `POST /sms` from a new number (welcome, shop name), then
   `sold 3 bread 45`, `Tendai owes 20 sugar`, `Tendai paid 10`, `who owes`, `today`, `undo`, `gibberish`, `sold 2 200`
   then `1`; repeat a shorter run through `POST /api/phone/sms` with a demo number. Every reply is at most 160
-  characters and ASCII. Add a case: a shop with 2,000 records and the text `sold 45 bread` gets a plain sentence.
+  characters and ASCII. Add the cases: the same `sold 3 bread 45` posted twice with one `id` saves one sale and gives
+  the same reply; a shop with 2,000 records and the text `sold 45 bread` gets a plain sentence.
   - Files: `test/server/conversation.test.ts`
-  - Requirements: 73, 47, 72
+  - Requirements: 73, 47, 72, 86
 
 ## 8. Documents
 
-- [ ] 8.1 **Write `docs/run-the-demo.md`.** Follow the outline in the design (seven sections). Use the real URLs
+- [x] 8.1 **Write `docs/run-the-demo.md`.** Follow the outline in the design (seven sections). Use the real URLs
   `https://imali-ai-feature-phone.vercel.app/ussd` and `.../sms`, the code `*384*46254#` and the short code `46254`.
+  Explain `AT_CALLBACK_KEY` and the `?k=` form of both addresses with the placeholder `<AT_CALLBACK_KEY>`.
   Show variables as names only, never a value or a connection string. Use only invented demo numbers
   (`+27000001234`). Keep sentences short.
   - Files: `docs/run-the-demo.md`
@@ -303,25 +395,31 @@ three methods until 0.1 is clear) and the fixed clock, and mock the two handlers
 
 ## 9. Wrap-up
 
-- [ ] 9.1 **Run all the checks.** `npm run typecheck`, `npm test` (the Postgres suites show as skipped with their
-  message when TEST_DATABASE_URL is not set), `npm run build`. Then run the Postgres suites once against a direct
-  Neon or local database with TEST_DATABASE_URL set. Search the repository for a key or a connection string with
-  `node scripts/secret-scan.mjs` on staged files and a search for `postgres://` in docs and tests. Confirm no test
-  reaches the network: run the tests with the network off, or check that no test file calls the real `fetch`.
+- [x] 9.1 **Run all the checks.** `npm run typecheck`, `npx vitest run` (the Postgres suites show as skipped with
+  their message when TEST_DATABASE_URL is not set), `npm run check:screens`, `npm run build`. Search the repository for
+  a key or a connection string with `node scripts/secret-scan.mjs` and a search for `postgres://` in docs and tests.
+  Confirm no test reaches the network: check that no test file calls the real `fetch`.
   - Files: none
   - Requirements: 72, 76, 78, 81
 
-- [ ] 9.2 **Make the steering file match.** Add `GET /api/ledger`, `POST /api/phone/demo` and `GET /health` to the
-  Routes list in `.kiro/steering/tech.md`, and add `AT_SHORTCODE`, `PORT` and `TEST_DATABASE_URL` to the line that
-  names the environment variables.
+- [x] 9.2 **Make the steering file match.** Add `GET /api/ledger`, `POST /api/phone/demo` and `GET /health` to the
+  Routes list in `.kiro/steering/tech.md`, and add `GEMINI_MODEL`, `AT_SHORTCODE`, `AT_CALLBACK_KEY`, `PORT` and
+  `TEST_DATABASE_URL` to the line that names the environment variables.
   - Files: `.kiro/steering/tech.md`
   - Requirements: 11
 
-- [ ] 9.3 **Check the first deploy (done by a person with the Vercel and Neon accounts).** With the variables set on
+- [ ] 9.3 **Run the Postgres suites (done by a person with a test database).** With TEST_DATABASE_URL set to a direct
+  (not pooled) Neon or local database the tests may use, run `npx vitest run test/store` and check that the suites are
+  not skipped and pass.
+  - Files: none
+  - Requirements: 75, 76, 77
+
+- [ ] 9.4 **Check the first deploy (done by a person with the Vercel and Neon accounts).** With the variables set on
   Vercel and `npm run db:migrate` run against Neon: `GET /health` answers; `POST /api/phone/demo` creates a shop; the
-  rows are in Neon; `POST /ussd` with form fields answers `CON ...`; the Vercel runtime log shows the start line
+  rows are in Neon; `POST /ussd` with form fields answers `CON ...`; with `AT_CALLBACK_KEY` set, `POST /ussd` without
+  `?k=` answers 403 and with it answers `CON ...`; the Vercel runtime log shows the start line
   (`store=postgres ...`) and no secret; a request to `/sms` reaches the function with the path `/sms` (the rewrite
   keeps the original path). If a check fails, use the fallbacks in the design's Risks section. Then dial
   `*384*46254#` in the Africa's Talking simulator and send a text to `46254`.
   - Files: none
-  - Requirements: 5, 12, 80
+  - Requirements: 5, 12, 80, 82

@@ -4,8 +4,11 @@ The HTTP server (a Hono app that runs on Node locally and on Vercel), the Postgr
 pending store, so the dialled menu and the text replies can be used from a real Africa's Talking sandbox and from
 the browser phone, with records that survive between serverless calls.
 
-This spec calls two entry points that other specs are still writing: `handleUssd` (spec `dialled-menu`, exported
-from `src/channels/index.ts`) and `handleText` (spec `text-messages`, in `src/channels/sms/handler.ts`).
+This spec calls two entry points that are finished: `handleUssd` (spec `dialled-menu`) and `handleText` (spec
+`text-messages`), both exported from `src/channels/index.ts`. It also builds on three things those specs left in the
+code: the duplicate-save guard of the dialled menu (a record id made from the session, refused by the store with
+`DuplicateRecordError`), `ShopAlreadyExistsError` (a shop id or phone number that is taken) and `normalizePhone` in
+`src/channels/phone.ts`.
 
 Words used below: a **demo number** is a phone number written `+2700000` followed by four digits (the range
 `+27 00 000 xxxx` with the spaces removed). The **browser routes** are `POST /api/phone/ussd`,
@@ -16,15 +19,16 @@ routes** are `POST /ussd` and `POST /sms`.
 
 ### The app and its entry points
 
-1. The server shall export `createApp({ store, pending, reader?, smsSender?, now? })` from `src/server/app.ts`, and
-   `createApp` shall return a Hono app without reading environment variables, opening a connection or listening on
-   a port.
+1. The server shall export `createApp({ store, pending, processed?, reader?, smsSender?, callbackKey?, now? })` from
+   `src/server/app.ts`, and `createApp` shall return a Hono app without reading environment variables, opening a
+   connection or listening on a port.
 
 2. Where `now` is passed, the app shall use it for every handler call, rate-limit check, demo seed and export
    time stamp; where it is not passed, the app shall use the system clock.
 
-3. When `npm run dev` starts the Node entry, the server shall listen on PORT (default 3000) and answer any GET
-   that matches no route with the file from `public/` (the path `/` gives `public/index.html`).
+3. When `npm run dev` starts the Node entry, the server shall listen on PORT (default 3000), on the local address
+   `127.0.0.1` only, and answer any GET that matches no route with the file from `public/` (the path `/` gives
+   `public/index.html`).
 
 4. If PORT is set but is not a whole number from 1 to 65535, then the Node entry shall exit with a message that
    names PORT and shall not listen.
@@ -41,20 +45,24 @@ routes** are `POST /ussd` and `POST /sms`.
 7. When DATABASE_URL is set, the start-up code shall build the Postgres store and the Postgres pending store;
    when it is not set, the start-up code shall build `MemoryStore` and `InMemoryPendingStore`.
 
-8. Where GEMINI_API_KEY is set, the start-up code shall pass a `GeminiReader` to `createApp`; where it is not set,
-   the start-up code shall pass no reader.
+8. Where GEMINI_API_KEY is set, the start-up code shall pass a `GeminiReader` to `createApp`, using the model in
+   GEMINI_MODEL when that is set and the reader's own default model when it is not; where GEMINI_API_KEY is not set,
+   the start-up code shall pass no reader, whatever GEMINI_MODEL says.
 
 9. Where AT_USERNAME and AT_API_KEY are both set, the start-up code shall pass an Africa's Talking sender to
-   `createApp`; where either is missing, the start-up code shall pass no sender, and where exactly one is set it
-   shall log a warning that names the missing variable.
+   `createApp`, with AT_SHORTCODE as the short code (`46254`, the sandbox short code, when AT_SHORTCODE is not set);
+   where either is missing, the start-up code shall pass no sender, and where exactly one is set it shall log a
+   warning that names the missing variable.
 
 10. The start-up code shall treat an environment variable that is unset, empty or only spaces as not set.
 
 11. The server shall read secrets only from environment variables, and `.env.example` shall list DATABASE_URL,
-    GEMINI_API_KEY, AT_USERNAME, AT_API_KEY, AT_SHORTCODE, PORT and TEST_DATABASE_URL, each with an empty value.
+    GEMINI_API_KEY, GEMINI_MODEL, AT_USERNAME, AT_API_KEY, AT_SHORTCODE, AT_CALLBACK_KEY, PORT and
+    TEST_DATABASE_URL, each with an empty value.
 
-12. When the server starts, it shall log one line that says which store is in use and whether the Gemini reader and
-    the Africa's Talking sender are on, and the line shall not contain the value of any environment variable.
+12. When the server starts, it shall log one line that says which store is in use, whether the Gemini reader and
+    the Africa's Talking sender are on, and whether the callback key is on, and the line shall not contain the value
+    of any environment variable.
 
 13. If the server runs on Vercel (VERCEL is set) and DATABASE_URL is not set, then it shall log a warning that
     records are not kept between calls.
@@ -86,9 +94,10 @@ routes** are `POST /ussd` and `POST /sms`.
 
 21. If the sender fails, then the app shall log the failure and still answer 200 with the reply text.
 
-22. The Africa's Talking routes shall accept any phone number that, after spaces, hyphens, dots and brackets are
-    removed and a missing leading `+` is added, is `+` followed by 5 to 15 digits, and shall not apply the demo
-    number check.
+22. The Africa's Talking routes shall accept any phone number that `normalizePhone` (`src/channels/phone.ts`) accepts,
+    which is `+` followed by 7 to 15 digits once spaces, hyphens, dots and brackets are removed and a missing leading
+    `+` is added, and shall not apply the demo number check. The server shall use that same function, so the dialled
+    menu, the text handler and the routes find the same shop.
 
 ### The browser phone
 
@@ -199,12 +208,14 @@ routes** are `POST /ussd` and `POST /sms`.
 
 ### Changes to the store interface
 
-51. When `appendRecord` is called with `{ saveKey }` and a record for the same shop was already appended with the
-    same `saveKey`, the store shall throw `DuplicateSaveError` and shall leave the first record as it was; both the
-    memory store and the Postgres store shall do this.
+51. When `appendRecord` is called with a record whose id the store already holds, the store shall throw
+    `DuplicateRecordError` and shall leave the first record as it was, and it shall make this check before any other,
+    so a repeated undo gives `DuplicateRecordError` and not `RecordAlreadyReversedError`. This is the duplicate-save
+    guard the dialled menu uses (its record ids are made from the session id and the step). Both the memory store and
+    the Postgres store shall do this, and no second mechanism (no save key) shall be added.
 
-52. When `createShop` is called with a phone number that already has a shop, the store shall throw
-    `ShopPhoneTakenError` and shall not change the existing shop; both stores shall do this.
+52. When `createShop` is called with an id or a phone number that already has a shop, the store shall throw
+    `ShopAlreadyExistsError` and shall not change the existing shop; both stores shall do this.
 
 53. The `listRecords` method of both stores shall return records in the order they were appended, including
     records with the same time stamp, and shall return a new array that the caller may change.
@@ -219,8 +230,8 @@ routes** are `POST /ussd` and `POST /sms`.
 56. The Postgres store shall keep times in `timestamptz` columns and shall return the same ISO 8601 string that
     was written.
 
-57. The migration `sql/001_init.sql` shall create the tables `shops`, `records` and `pending_questions` of the
-    design, and `npm run db:migrate` shall apply every migration file not yet applied, in name order, each in one
+57. The migration `sql/001_init.sql` shall create the tables `shops`, `records`, `pending_questions` and
+    `processed_texts` of the design, and `npm run db:migrate` shall apply every migration file not yet applied, in name order, each in one
     transaction, and note it in `schema_migrations`.
 
 58. When `npm run db:migrate` runs a second time with nothing new, it shall change nothing and say so.
@@ -231,10 +242,11 @@ routes** are `POST /ussd` and `POST /sms`.
 60. The database shall allow one reversal per record through a unique index on the reversed record id, and when
     that index rejects an insert the Postgres store shall throw `RecordAlreadyReversedError`.
 
-61. The database shall allow one record per shop for each `saveKey` through a unique index, and when that index
-    rejects an insert the Postgres store shall throw `DuplicateSaveError`; the database shall allow one shop per
-    phone number through a unique constraint, and when that rejects an insert the Postgres store shall throw
-    `ShopPhoneTakenError`.
+61. The database shall allow one record per id through the primary key on `records.id`, and when an insert meets an
+    id that is already there the Postgres store shall throw `DuplicateRecordError` (the check for the id comes
+    before the check for a second reversal, as in requirement 51); the database shall allow one shop per id and one
+    shop per phone number through the primary key and a unique constraint, and when either rejects an insert the
+    Postgres store shall throw `ShopAlreadyExistsError`.
 
 62. The database shall refuse a record whose fields do not fit its kind: an amount of zero or less on a sale,
     expense, debt or payment, a reversal with an amount other than zero, a debt or payment without a customer,
@@ -288,8 +300,10 @@ routes** are `POST /ussd` and `POST /sms`.
     that the message and the stack are not in the response and are in the log.
 
 75. A contract test suite shall run the same `LedgerStore` checks against `MemoryStore` and against the Postgres
-    store, including `RecordAlreadyReversedError`, `DuplicateSaveError`, `ShopPhoneTakenError`, append order,
-    the `since` filter and amounts up to `Number.MAX_SAFE_INTEGER`.
+    store, including `RecordAlreadyReversedError`, `DuplicateRecordError` (also for a repeated reversal),
+    `ShopAlreadyExistsError` (for the id and for the phone), the count of shops by phone prefix, append order, the
+    `since` filter and amounts up to `Number.MAX_SAFE_INTEGER`. A second suite shall run the same checks on the two
+    processed-text stores.
 
 76. If TEST_DATABASE_URL is not set, then the Postgres tests shall be skipped, and the name of the skipped suite
     shall say that TEST_DATABASE_URL must be set to run them.
@@ -308,8 +322,75 @@ routes** are `POST /ussd` and `POST /sms`.
 
 80. The Africa's Talking set-up in `docs/run-the-demo.md` shall name the existing sandbox channel `*384*46254#`
     with the callback `https://imali-ai-feature-phone.vercel.app/ussd`, and the SMS short code `46254` with the
-    incoming-message callback `https://imali-ai-feature-phone.vercel.app/sms`, and shall say that text replies go
-    out from the short code in AT_SHORTCODE (default 46254).
+    incoming-message callback `https://imali-ai-feature-phone.vercel.app/sms`, shall say that text replies go
+    out from the short code in AT_SHORTCODE (default 46254), and shall explain AT_CALLBACK_KEY: when it is set, both
+    callback addresses end in `?k=` followed by the key (shown as `<AT_CALLBACK_KEY>`, never a value).
 
 81. The documents, tests and examples written for this spec shall not contain a real key, password or
     connection string, and shall use only invented demo numbers.
+
+### Callback key (Africa's Talking routes)
+
+82. Where AT_CALLBACK_KEY is set (not blank), `POST /ussd` and `POST /sms` shall require the query parameter `k` to
+    equal it, and shall compare the two in constant time (both are hashed to the same length and the hashes are
+    compared with `crypto.timingSafeEqual`, so neither the content nor the length of the key shows in the timing).
+
+83. If `k` is missing or is not equal to AT_CALLBACK_KEY, then `POST /ussd` and `POST /sms` shall answer 403
+    `text/plain` with a plain sentence, shall make the check before the body is read, and shall not call a handler,
+    the store, the processed-text store or the sender.
+
+84. Where AT_CALLBACK_KEY is not set, `POST /ussd` and `POST /sms` shall accept every request, as they do in local
+    runs and in tests; the browser routes and `GET /health` shall never need the key; and the key shall not appear in
+    any response, log line or start-up line.
+
+### Repeated text callbacks
+
+85. When `POST /sms` receives an `id` of 1 to 100 characters made of letters, digits, `_`, `.`, `:` and `-`, the app
+    shall claim the pair (normalised `from`, `id`) in the processed-text store after the length check and before it
+    calls `handleText`; where `id` is missing or has another shape, the app shall skip the claim and handle the
+    message as before.
+
+86. If the pair was already processed, then the app shall answer 200 `text/plain` with the reply that was stored the
+    first time, shall not call `handleText`, and shall not send a text message again.
+
+87. If the pair was claimed and has no reply yet (the first call is still running), then the app shall answer 200
+    `text/plain` with a plain sentence, shall not call `handleText`, and shall not send a text message.
+
+88. When `handleText` finishes, the app shall store its reply with the claim before it sends the text message, so a
+    failed send does not let a repeat run again; if `handleText` throws, the app shall log the error, store the
+    plain error sentence as the reply, and answer and send that sentence. The app shall never forget a claim,
+    because `handleText` may already have saved a record before it threw, and a second run would save it twice.
+
+89. The processed-text store shall let exactly one of two simultaneous claims of the same pair win; the memory
+    store shall do this with a `Map` (a keyed set of ids that also holds the reply), and the Postgres store with a
+    table `processed_texts` whose primary key is (`phone`, `message_id`) and an insert that does nothing on
+    conflict.
+
+90. The processed-text stores shall keep a claim for 48 hours, measured with an injected clock, and a claim shall
+    delete the entries older than that.
+
+91. The browser route `POST /api/phone/sms` has no message id and shall not use the processed-text store.
+
+### Limits on the public demo shops
+
+92. If a client address has called `POST /api/phone/demo` 10 times in the last hour, then the app shall answer the
+    next call with 429, a `Retry-After` header in seconds and a plain sentence, shall not read or write the store
+    for it, and the refused call shall not count toward the 10; every call counts, including calls that name a phone
+    number and calls that end in 409. The count is kept in the memory of the running instance (as in requirement 46).
+
+93. The client address shall be the first address in the `x-forwarded-for` header, trimmed (Vercel sets it); where
+    that header is missing or blank the app shall use `x-real-ip`, and where that is also missing the app shall use
+    one shared key `unknown`.
+
+94. If the store already holds 5,000 or more shops with a demo number, then `POST /api/phone/demo` shall answer 503
+    JSON `{ error }` with a plain sentence and shall create nothing. The check and the insert are two steps, so
+    simultaneous calls can pass 5,000 by a few shops.
+
+95. The store interface shall have `countShopsWithPhonePrefix(prefix)`, and both stores shall implement it; the app
+    shall count demo shops with the prefix `+2700000`.
+
+### Package and repository files
+
+96. The file `package.json` shall name the package `imali-ai-feature-phone`, set `"private": true`, set
+    `"engines": { "node": "22.x" }` so Vercel runs Node 22, and keep `dependencies` to `hono` (on the 4.x line, with
+    a `^4` range), `@hono/node-server` and `postgres`; and `.gitignore` shall list `.vercel`.

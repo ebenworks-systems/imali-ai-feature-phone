@@ -11,26 +11,26 @@
 //   - every screen id in SCREEN_IDS was shown at least once (a screen nobody renders fails the check).
 //
 // Text-message conversations (through `handleText`): each reply is checked with `smsProblems`: at most 160
-// characters and plain ASCII. A build without `dist/channels/sms/handler.js` fails the check.
+// characters and plain ASCII. A build without `dist/src/channels/sms/handler.js` fails the check.
 //
 // Each failure is printed as `<currency> <session> <text> -> <length> <problem>`. Exit code 1 on any failure.
 
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { SMS_LIMIT, USSD_LIMIT, smsProblems, ussdProblems } from '../dist/channels/limits.js';
-import { SCREEN_IDS } from '../dist/channels/ussd/screen.js';
+import { SMS_LIMIT, USSD_LIMIT, smsProblems, ussdProblems } from '../dist/src/channels/limits.js';
+import { SCREEN_IDS } from '../dist/src/channels/ussd/screen.js';
 
 // The sessions are built on the text-message handler too, so a build without it stops here, with the reason.
-const SMS_HANDLER = fileURLToPath(new URL('../dist/channels/sms/handler.js', import.meta.url));
+const SMS_HANDLER = fileURLToPath(new URL('../dist/src/channels/sms/handler.js', import.meta.url));
 if (!existsSync(SMS_HANDLER)) {
   console.error('1 problem:');
-  console.error('  - text replies "dist/channels/sms/handler.js" -> 0 the text-message handler is missing from the build');
+  console.error('  - text replies "dist/src/channels/sms/handler.js" -> 0 the text-message handler is missing from the build');
   process.exit(1);
 }
 
 const { ALL_CURRENCIES, MENU_SESSIONS, TEXT_SESSIONS, runWorstSession, runWorstTextSession } = await import(
-  '../dist/channels/ussd/worst-case.js'
+  '../dist/src/channels/ussd/worst-case.js'
 );
 
 // A fixed time, so a run is the same every time.

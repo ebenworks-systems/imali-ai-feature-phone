@@ -83,8 +83,9 @@ export class MemoryStore implements LedgerStore {
   ): Promise<Record[]> {
     const records = this.recordsByShop.get(shopId) || [];
 
+    // Always a new array: generateExport sorts the one it gets, which must not reorder the store's own list.
     if (!options?.since) {
-      return records;
+      return [...records];
     }
 
     const sinceTimestamp = new Date(options.since).getTime();
@@ -92,6 +93,14 @@ export class MemoryStore implements LedgerStore {
       const recordTime = new Date(record.createdAt).getTime();
       return recordTime >= sinceTimestamp;
     });
+  }
+
+  async countShopsWithPhonePrefix(prefix: string): Promise<number> {
+    let count = 0;
+    for (const shop of this.shops.values()) {
+      if (shop.phone.startsWith(prefix)) count += 1;
+    }
+    return count;
   }
 
   /**

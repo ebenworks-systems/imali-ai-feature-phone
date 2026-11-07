@@ -2,6 +2,9 @@
 //
 // The Postgres store must give the same two errors as the memory store: DuplicateRecordError from a primary key on
 // the record id, and ShopAlreadyExistsError from a unique index on the shop's phone (and the shop id).
+//
+// The record id is the one duplicate-save guard. The dialled menu makes the id of every record from the session
+// and the step, so a repeated request tries to append an id the store already holds. There is no other key.
 
 import type { Shop } from '../core/shops/types.js';
 import type { Record, ReversalRecord } from '../core/records/types.js';
@@ -62,8 +65,10 @@ export interface LedgerStore {
 
   /**
    * Appends a record to the store
-   * Throws DuplicateRecordError when the id is already held (checked first), changing nothing
+   * Throws DuplicateRecordError when the id is already held (checked first), changing nothing. A repeated undo
+   * carries the same id, so it gets this error and not RecordAlreadyReversedError.
    * Throws RecordAlreadyReversedError if trying to reverse a record that's already reversed
+   * (a different id for a record that already has a reversal)
    */
   appendRecord(record: Record): Promise<void>;
 
@@ -78,7 +83,8 @@ export interface LedgerStore {
   findReversalOf(recordId: string): Promise<ReversalRecord | null>;
 
   /**
-   * Lists all records for a shop, optionally filtered by since timestamp
+   * Lists all records for a shop, in the order they were appended, optionally filtered by since timestamp
+   * (inclusive). Returns a new array each time, so the caller may sort or change it.
    */
   listRecords(
     shopId: string,
@@ -86,4 +92,10 @@ export interface LedgerStore {
       since?: string; // UTC ISO 8601 timestamp
     }
   ): Promise<Record[]>;
+
+  /**
+   * Counts the shops whose phone number starts with the prefix (for example the demo shops, `+2700000`).
+   * The prefix is plain text: no character in it has a special meaning.
+   */
+  countShopsWithPhonePrefix(prefix: string): Promise<number>;
 }

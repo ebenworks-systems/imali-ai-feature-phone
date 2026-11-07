@@ -1,17 +1,29 @@
 {
-  "name": "imali-ledger-core",
+  "name": "imali-ai-feature-phone",
   "version": "0.1.0",
+  "private": true,
   "description": "Imali AI ledger-core: shop ledger for feature phones",
   "type": "module",
-  "types": "./dist/index.d.ts",
-  "main": "./dist/index.js",
+  "engines": {
+    "node": "22.x"
+  },
+  "types": "./dist/src/index.d.ts",
+  "main": "./dist/src/index.js",
   "scripts": {
+    "dev": "tsc && node --env-file-if-exists=.env dist/src/server/main.js",
+    "start": "node --env-file-if-exists=.env dist/src/server/main.js",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:screens": "tsc && node scripts/check-screens.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "hono": "^4.13.17",
+    "postgres": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
