@@ -380,6 +380,39 @@ describe('readIntent', () => {
     });
   });
 
+  describe('Sale with the amount first and a word after it', () => {
+    it('reads "sold 45 bread" (the help reply example) as R45 of bread', () => {
+      expect(readIntent('sold 45 bread', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+    });
+
+    it('keeps every word after the amount as the item', () => {
+      expect(readIntent('sold 45 bread and milk', currency)).toEqual({
+        kind: 'sale',
+        cents: 4500,
+        item: 'bread and milk'
+      });
+    });
+
+    it('ignores case and extra spaces', () => {
+      expect(readIntent('  Sold   R45   Bread ', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+    });
+
+    it('reads "sold 45" with no item', () => {
+      expect(readIntent('sold 45', currency)).toEqual({ kind: 'sale', cents: 4500 });
+    });
+
+    it('still reads "spent 20 taxi" as an expense for taxi', () => {
+      expect(readIntent('spent 20 taxi', currency)).toEqual({ kind: 'expense', cents: 2000, item: 'taxi' });
+    });
+
+    it('does not change the shapes that already worked', () => {
+      expect(readIntent('sold 3 bread 45', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread', quantity: 3 });
+      expect(readIntent('sold bread 45', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+      expect(readIntent('45 bread', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+      expect(readIntent('3 bread @15', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread', quantity: 3 });
+    });
+  });
+
   describe('Bug fixes', () => {
     it('bug 1: parses "Sold  Bread R45.50" with case/spaces and currency prefix', () => {
       const intent = readIntent('Sold  Bread R45.50', currency);

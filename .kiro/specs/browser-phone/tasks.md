@@ -295,3 +295,8 @@ tests first, then markup and CSS, then the two DOM files, then docs and checks. 
   - Files: `README.md`
   - Requirements: 96
   - Change "the browser phone for judges ... come next" to say the browser phone is built, and point to `docs/judges.md`.
+
+- [x] 55. **Match the core on negative amounts**
+  - Files: `public/ledger-logic.js`, `test/public/ledger-logic.test.ts`
+  - Requirements: 94, 101
+  - `formatMoney` wrote `R-60`; the core writes `-R60`. The sign now goes before the symbol. The old test that expected `R-45.50` is changed, a test checks every currency, and the fast-check comparison with `formatCents` passes again.

@@ -26,37 +26,43 @@ export function getShopDayBounds(
   shop: Shop,
   date: string
 ): { start: Date; end: Date } {
-  // Parse the YYYY-MM-DD string
   const [year, month, day] = date.split('-').map(Number);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
 
-  // Binary search to find the UTC time that corresponds to the start of this day
-  // in the shop's time zone. We search for the moment when the local date changes
-  // from the day before to this day.
+  // The day runs from its first millisecond up to, but not including, the first
+  // millisecond of the next local day.
+  const start = firstMomentOfLocalDay(shop, date, year, month, day);
+  const end = firstMomentOfLocalDay(shop, nextDay, year, month, day + 1);
 
-  // Start with a reasonable range: UTC day -1 to UTC day +1
-  let low = new Date(Date.UTC(year, month - 1, day - 1, 0, 0, 0, 0));
-  let high = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0, 0));
+  return { start, end };
+}
 
-  // Binary search for the exact moment when local date becomes the target date
-  while (high.getTime() - low.getTime() > 1000) {
-    const mid = new Date((low.getTime() + high.getTime()) / 2);
-    const localDate = getShopLocalDate(shop, mid);
+/**
+ * The first millisecond at which the shop's local date is `date`.
+ * Binary search on whole milliseconds, so the answer is exact.
+ */
+function firstMomentOfLocalDay(
+  shop: Shop,
+  date: string,
+  year: number,
+  month: number,
+  day: number
+): Date {
+  // Every time zone is within +/-14 hours of UTC, so two UTC days either side is enough.
+  // Invariant: the local date at `low` is before `date`; the local date at `high` is `date` or later.
+  let low = Date.UTC(year, month - 1, day - 2, 0, 0, 0, 0);
+  let high = Date.UTC(year, month - 1, day + 2, 0, 0, 0, 0);
 
-    if (localDate < date) {
+  while (high - low > 1) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (getShopLocalDate(shop, new Date(mid)) < date) {
       low = mid;
     } else {
       high = mid;
     }
   }
 
-  // low is now just before the start of the day, high is at or after
-  // The start is high (first moment when local date equals target date)
-  const start = high;
-
-  // End of day is start + 24 hours
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-
-  return { start, end };
+  return new Date(high);
 }
 
 /**

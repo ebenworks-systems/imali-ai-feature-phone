@@ -132,6 +132,44 @@ describe('timezone utilities', () => {
     });
   });
 
+  describe('getShopDayBounds to the millisecond', () => {
+    // Standard offset from UTC in hours. None of these zones uses summer time.
+    const zones: Array<[string, number]> = [
+      ['Africa/Johannesburg', 2],
+      ['Africa/Nairobi', 3],
+      ['Africa/Lagos', 1],
+      ['Africa/Accra', 0],
+      ['Africa/Lusaka', 2],
+      ['Africa/Gaborone', 2]
+    ];
+    const HOUR = 60 * 60 * 1000;
+
+    for (const [timeZone, offsetHours] of zones) {
+      it(`${timeZone}: the day starts at 00:00:00.000 local and ends after 23:59:59.999 local`, () => {
+        const shop = createShop({ name: 'Test Shop', phone: '+27000000000', currency: 'ZAR', timeZone });
+        const bounds = getShopDayBounds(shop, '2024-01-15');
+
+        const localMidnightUtc = Date.UTC(2024, 0, 15, 0, 0, 0, 0) - offsetHours * HOUR;
+        expect(bounds.start.getTime()).toBe(localMidnightUtc);
+        expect(bounds.end.getTime()).toBe(localMidnightUtc + 24 * HOUR);
+
+        // 00:00:00.000 local is in the day, 23:59:59.999 local is in the day
+        expect(getShopLocalDate(shop, new Date(bounds.start.getTime()))).toBe('2024-01-15');
+        expect(getShopLocalDate(shop, new Date(bounds.end.getTime() - 1))).toBe('2024-01-15');
+        // one millisecond either side is not
+        expect(getShopLocalDate(shop, new Date(bounds.start.getTime() - 1))).toBe('2024-01-14');
+        expect(getShopLocalDate(shop, new Date(bounds.end.getTime()))).toBe('2024-01-16');
+      });
+    }
+
+    it('works across a month and year end', () => {
+      const shop = createShop({ name: 'Test Shop', phone: '+27000000000', currency: 'ZAR', timeZone: 'Africa/Johannesburg' });
+      const bounds = getShopDayBounds(shop, '2024-12-31');
+      expect(bounds.start.toISOString()).toBe('2024-12-30T22:00:00.000Z');
+      expect(bounds.end.toISOString()).toBe('2024-12-31T22:00:00.000Z');
+    });
+  });
+
   describe('isTodayInShopTimeZone', () => {
     it('returns true for today', () => {
       const shop = createShop({

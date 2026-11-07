@@ -237,6 +237,14 @@
   - Test build: `npm run build`
   - Verify no linting errors (if linter added later)
 
+## Fixes
+
+- [x] 30. **Make the day bounds exact to the millisecond**
+  - Files: `src/core/timezone/utils.ts`, `test/core/timezone/utils.test.ts`
+  - Criteria: 9.2
+  - `getShopDayBounds` stopped its search at 1 second and returned the late side, so the start of the day could be up to 1 second late (0.4 s for a 1.4 s step) and a record in the first second of the day fell out of that day's figures. The search now runs to 1 ms, and the end is the start of the next local day.
+  - Tests at 00:00:00.000 and 23:59:59.999 local time for all six supported zones, plus one millisecond either side.
+
 ## Success Criteria
 1. All 29 tasks completed and checked with correct criteria references
 2. All unit tests pass (100% coverage for core modules)

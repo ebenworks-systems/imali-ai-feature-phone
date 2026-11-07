@@ -94,7 +94,7 @@ describe('a sale by text shows in the menu', () => {
 
   it('sold 45 bread, as the owner may type it, shows in the menu Today line', async () => {
     await signUpInMenu();
-    expect(await text('sold 45 bread')).toMatch(/^Saved: sale R45\./);
+    expect(await text('sold 45 bread')).toMatch(/^Saved: sale R45 \(bread\)\./);
     expect((await phone().open()).lines[1]).toBe('Today: sales R45');
     expect((await keys(phone(), '5')).lines[1]).toBe('Sales R45 (1)');
   });

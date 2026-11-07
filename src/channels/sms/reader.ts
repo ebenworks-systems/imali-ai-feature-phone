@@ -98,7 +98,7 @@ function wordsPreserveCase(text: string): string[] {
  * Try to parse a sale intent from the message.
  * Patterns:
  * 1. "sold 3 bread 45" -> {quantity, item, amount}
- * 2. "sold bread 45" -> {item, amount}
+ * 2. "sold bread 45" -> {item, amount}; "sold 45 bread" -> {amount, item}
  * 3. "sale 45" -> {amount}
  * 4. "45 bread" -> {amount, item}
  * 5. "sold 3 bread at 15" -> {quantity, item, unit_price}
@@ -227,7 +227,9 @@ function trySale(text: string, currency: Currency): SaleIntent | AmbiguousIntent
       const amountText = wPreserve[i]; // Use preserved case for parseAmount
       const result = parseAmount(amountText, currency);
       if (result.type === 'success') {
-        const itemPart = w.slice(1, i).join(' '); // Use normalized (lowercase) for item
+        // "sold bread 45": the item is before the amount.
+        // "sold 45 bread": nothing before the amount, so the words after it are the item.
+        const itemPart = i > 1 ? w.slice(1, i).join(' ') : w.slice(i + 1).join(' '); // normalized (lowercase)
         return {
           kind: 'sale',
           cents: result.amount.cents,

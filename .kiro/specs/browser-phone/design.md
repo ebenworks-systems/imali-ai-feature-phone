@@ -566,7 +566,7 @@ exportFileName(nowMs)                 // 'imali-ai-export-YYYY-MM-DD.json' (UTC 
 ```
 
 `formatMoney` copies `formatCents`: symbol table `ZAR R, USD $, KES KSh, NGN N, GHS GHS, ZMW K, BWP P`; whole part
-with commas; `.xx` only when the cents are not zero; a leading `-` after the symbol for negatives. A test compares it
+with commas; `.xx` only when the cents are not zero; a leading `-` before the symbol for negatives (`-R60`). A test compares it
 with `src/core/money/format.ts` for every currency and for random cents (fast-check is already a dev dependency).
 
 `Row`: `{ id, kindWord, amountText, detail, channelWord, timeText, undone, isReversal, cancelsText }`.

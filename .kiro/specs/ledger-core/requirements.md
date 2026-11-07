@@ -136,6 +136,12 @@ Pure TypeScript implementation of the ledger's core business logic in `src/core/
 - Use `Intl` APIs, no external date library
 - Accept an explicit `now: Date` parameter instead of reading system clock in core logic
 
+9.2 **WHEN** computing the bounds of a local day with `getShopDayBounds`  
+**THE SYSTEM SHALL**:
+- Return a start that is exactly 00:00:00.000 local time, found to the millisecond (not to the second)
+- Return an end that is the first millisecond of the next local day, so a record at 23:59:59.999 is inside the day and one at 00:00:00.000 the next day is not
+- Do this for every supported time zone (Africa/Johannesburg, Nairobi, Lagos, Accra, Lusaka, Gaborone)
+
 ### 10. Time Dependency Injection
 
 10.1 **WHEN** any ledger operation requires the current time  

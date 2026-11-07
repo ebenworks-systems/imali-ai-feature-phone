@@ -396,6 +396,9 @@ Money is whole cents plus the shop's currency.
 100. THE page SHALL use an ASCII hyphen wherever it needs a dash, and SHALL contain no em dash, no en dash and no
      other non-ASCII character in its markup, styles or scripts.
 
+101. THE page's `formatMoney` SHALL write a negative amount with the minus sign before the currency symbol, `-R60` and
+     `-KSh1,200.50`, never `R-60`, for every currency, exactly as `formatCents` in `src/core/money/format.ts` does.
+
 ## Assumptions about the other specs
 
 These are the points where this page needs more than the route contract above says. Each should be confirmed

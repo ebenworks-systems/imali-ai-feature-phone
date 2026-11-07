@@ -38,7 +38,7 @@ export function formatMoney(cents, currency) {
   const rest = absolute % 100;
   const sign = cents < 0 ? '-' : '';
   const wholeText = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return rest === 0 ? `${symbol}${sign}${wholeText}` : `${symbol}${sign}${wholeText}.${String(rest).padStart(2, '0')}`;
+  return rest === 0 ? `${sign}${symbol}${wholeText}` : `${sign}${symbol}${wholeText}.${String(rest).padStart(2, '0')}`;
 }
 
 /** 'Currency ZAR (R)' */

@@ -103,3 +103,5 @@ Plain text messages (SMS) to record sales, expenses, customer debts, payments, a
 49. All tests use a fake model reader; no test makes a network call to Gemini.
 
 50. Every test checks that every reply is at most 160 characters and contains only ASCII characters.
+
+51. The reader parses "sold 45 bread" (sold, amount, item) and returns {sale, 4500 cents, "bread"} with no quantity, so the example in the help reply (requirement 41) records what it says; "sold 45 bread and milk" keeps "bread and milk" as the item, "sold 45" has no item, and requirements 1 to 12 read as before.

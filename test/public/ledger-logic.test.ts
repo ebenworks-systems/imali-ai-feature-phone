@@ -41,9 +41,20 @@ describe('formatMoney', () => {
     expect(Object.keys(CURRENCY_SYMBOLS)).toHaveLength(7);
   });
 
-  it('puts the minus after the symbol', () => {
-    expect(formatMoney(-4550, 'ZAR')).toBe('R-45.50');
-    expect(formatMoney(-100000, 'KES')).toBe('KSh-1,000');
+  it('puts the minus before the symbol, as src/core/money/format.ts does', () => {
+    expect(formatMoney(-4550, 'ZAR')).toBe('-R45.50');
+    expect(formatMoney(-100000, 'KES')).toBe('-KSh1,000');
+    expect(formatMoney(-6000, 'ZAR')).toBe('-R60');
+  });
+
+  it('writes a negative as -<symbol><amount> for every currency, and zero with no sign', () => {
+    for (const currency of CURRENCIES) {
+      const symbol = CURRENCY_SYMBOLS[currency];
+      expect(formatMoney(-6000, currency)).toBe(`-${symbol}60`);
+      expect(formatMoney(-120050, currency)).toBe(`-${symbol}1,200.50`);
+      expect(formatMoney(0, currency)).toBe(`${symbol}0`);
+      expect(formatMoney(-0, currency)).toBe(`${symbol}0`);
+    }
   });
 
   it('refuses a cents value that is not a safe integer', () => {

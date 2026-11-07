@@ -97,3 +97,7 @@
 - [x] Check that all replies pass ASCII and 160-character limits in test suite (requirements 42, 50).
 
 - [x] Document the SMS module in src/channels/index.ts, exporting handleText and public types.
+
+## Fixes
+
+- [x] Read "sold 45 bread" as {sale, 4500 cents, item "bread"} (requirement 51): in the "sold bread 45" pattern of `src/channels/sms/reader.ts`, when no word comes before the amount, the words after it are the item. Tests: "Sale with the amount first and a word after it" in test/channels/sms/reader.test.ts; requirements 1 to 12 tests unchanged and passing.
