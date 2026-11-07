@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Dial a code or send a text message. The ledger works on any phone, with no data bundle, no app and no smartphone.">
+  <title>Imali AI feature-phone ledger - live demo</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&family=VT323&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="phone.js"></script>
+</head>
+<body>
+  <a class="skip" href="#ledger">Skip to the ledger</a>
+  <noscript><p class="noscript">This demo needs JavaScript. It draws the phone in your browser.</p></noscript>
+
+  <main id="main" class="page">
+
+    <section class="intro reveal" aria-labelledby="page-title">
+      <p class="eyebrow">Kiroween 2026 - Resurrection</p>
+      <h1 id="page-title">Keep your shop's books on any phone.</h1>
+      <p class="lede">Dial a code or send a text message. The ledger works on any phone, with no data bundle, no app and no smartphone.</p>
+    </section>
+
+    <div class="phone-col">
+      <div id="phone" class="phone" role="group" aria-label="Imali AI demo phone">
+        <div class="phone-body">
+          <span class="speaker" aria-hidden="true"></span>
+
+          <div class="lcd-bezel">
+            <div class="lcd">
+              <div class="lcd-status" aria-hidden="true">
+                <span class="lcd-network">Imali AI</span>
+                <span id="lcd-clock" class="lcd-clock"></span>
+              </div>
+              <div id="lcd-body" class="lcd-body" role="log" tabindex="0" aria-label="Phone screen" aria-busy="false"></div>
+              <div id="lcd-entry" class="lcd-entry" aria-hidden="true" hidden>
+                <span class="lcd-prompt">&gt;</span>
+                <span id="lcd-entry-text" class="lcd-entry-text"></span>
+                <span id="lcd-mode" class="lcd-mode">123</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="softs">
+            <button type="button" id="soft-left" class="key key--soft" data-soft="left" aria-label="Left soft key, not used" aria-disabled="true"><span class="soft-label"></span></button>
+            <button type="button" id="soft-centre" class="key key--soft key--soft-centre" data-soft="centre" aria-label="Centre soft key, not used" aria-disabled="true"><span class="soft-label"></span></button>
+            <button type="button" id="soft-right" class="key key--soft" data-soft="right" aria-label="Right soft key, not used" aria-disabled="true"><span class="soft-label"></span></button>
+          </div>
+
+          <div class="callrow">
+            <button type="button" id="key-call" class="key key--call" data-action="call" aria-label="Call key, send">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path transform="rotate(-135 12 12)" d="M3 10c0-1 .8-1.9 1.8-2.2 4.8-1.4 9.6-1.4 14.4 0 1 .3 1.8 1.2 1.8 2.2v1.4c0 .6-.5 1.1-1.1 1.1h-2.6c-.6 0-1.1-.5-1.1-1.1v-1.2c-2.2-.5-4.4-.5-6.6 0v1.2c0 .6-.5 1.1-1.1 1.1H4.1c-.6 0-1.1-.5-1.1-1.1z" fill="currentColor"/></svg>
+            </button>
+            <button type="button" id="key-mode" class="key key--mode" data-action="mode" aria-label="Switch typing mode, now 123"><span class="mode-half is-active" data-mode="123">123</span><span class="mode-sep">/</span><span class="mode-half" data-mode="abc">abc</span></button>
+            <button type="button" id="key-end" class="key key--end" data-action="end" aria-label="End key, cancel">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 10c0-1 .8-1.9 1.8-2.2 4.8-1.4 9.6-1.4 14.4 0 1 .3 1.8 1.2 1.8 2.2v1.4c0 .6-.5 1.1-1.1 1.1h-2.6c-.6 0-1.1-.5-1.1-1.1v-1.2c-2.2-.5-4.4-.5-6.6 0v1.2c0 .6-.5 1.1-1.1 1.1H4.1c-.6 0-1.1-.5-1.1-1.1z" fill="currentColor"/></svg>
+            </button>
+          </div>
+
+          <div class="pad" role="group" aria-label="Keypad">
+            <button type="button" class="key key--pad" data-key="1" aria-label="1"><span class="k-digit">1</span><span class="k-letters"></span></button>
+            <button type="button" class="key key--pad" data-key="2" aria-label="2, a b c"><span class="k-digit">2</span><span class="k-letters">abc</span></button>
+            <button type="button" class="key key--pad" data-key="3" aria-label="3, d e f"><span class="k-digit">3</span><span class="k-letters">def</span></button>
+            <button type="button" class="key key--pad" data-key="4" aria-label="4, g h i"><span class="k-digit">4</span><span class="k-letters">ghi</span></button>
+            <button type="button" class="key key--pad" data-key="5" aria-label="5, j k l"><span class="k-digit">5</span><span class="k-letters">jkl</span></button>
+            <button type="button" class="key key--pad" data-key="6" aria-label="6, m n o"><span class="k-digit">6</span><span class="k-letters">mno</span></button>
+            <button type="button" class="key key--pad" data-key="7" aria-label="7, p q r s"><span class="k-digit">7</span><span class="k-letters">pqrs</span></button>
+            <button type="button" class="key key--pad" data-key="8" aria-label="8, t u v"><span class="k-digit">8</span><span class="k-letters">tuv</span></button>
+            <button type="button" class="key key--pad" data-key="9" aria-label="9, w x y z"><span class="k-digit">9</span><span class="k-letters">wxyz</span></button>
+            <button type="button" class="key key--pad" data-key="*" aria-label="star"><span class="k-digit">*</span><span class="k-letters"></span></button>
+            <button type="button" class="key key--pad" data-key="0" aria-label="0"><span class="k-digit">0</span><span class="k-letters"></span></button>
+            <button type="button" class="key key--pad" data-key="#" aria-label="hash"><span class="k-digit">#</span><span class="k-letters"></span></button>
+          </div>
+        </div>
+      </div>
+
+      <div id="start-cta" class="start-cta">
+        <button type="button" id="start-cta-btn" class="btn btn--primary" data-start>
+          <span class="btn__label">Start demo shop</span>
+          <span class="btn__arrow" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" focusable="false"><path d="M4.5 11.5l7-7M5.5 4.5h6v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+        <p id="cta-error" class="action-error" hidden></p>
+      </div>
+      <p id="counter" class="counter" aria-live="off"></p>
+    </div>
+
+    <section class="steps reveal" aria-labelledby="steps-title">
+      <div class="bezel">
+        <div class="bezel-core">
+          <h2 id="steps-title">Try it in one minute</h2>
+          <ol class="steps-list">
+            <li>Press Start demo shop.</li>
+            <li>Dial <kbd>*384*46254#</kbd> and press the green key.</li>
+            <li>Press <kbd>1</kbd> for Sale, type <kbd>45</kbd>, press <kbd>1</kbd> to skip the item, press <kbd>1</kbd> to save.</li>
+            <li>Open Messages and send <code>"Tendai owes 20 sugar"</code>, then <code>"who owes"</code>.</li>
+            <li>Send <code>"undo"</code>, then <code>"close"</code>, and press Export to download the records Imali AI can import.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="ledger" class="ledger reveal" aria-labelledby="ledger-title" aria-busy="false">
+      <div class="bezel">
+        <div class="bezel-core">
+          <header class="ledger-head">
+            <h2 id="ledger-title">Shop ledger</h2>
+            <p id="shop-meta" class="meta"></p>
+          </header>
+
+          <p id="ledger-none" class="state-line">No demo shop yet. Press Start demo shop.</p>
+          <p id="ledger-loading" class="state-line" hidden>Loading...</p>
+
+          <div id="ledger-body" hidden>
+            <section class="block" aria-labelledby="today-title">
+              <h3 id="today-title">Today</h3>
+              <dl class="figures">
+                <div class="figure"><dt>Sales</dt><dd><span id="fig-sales">R0</span> <span id="fig-count" class="count"></span></dd></div>
+                <div class="figure"><dt>Spent</dt><dd id="fig-spent">R0</dd></div>
+                <div class="figure"><dt>In hand</dt><dd id="fig-inhand">R0</dd></div>
+              </dl>
+            </section>
+
+            <section class="block" aria-labelledby="owes-title">
+              <h3 id="owes-title">Who owes</h3>
+              <ol id="owes-list" class="owes-list"></ol>
+              <p id="owes-empty" class="state-line" hidden>Nobody owes money.</p>
+              <button type="button" id="owes-more" class="btn btn--quiet btn--small" aria-expanded="false" hidden>Show all</button>
+            </section>
+
+            <section class="block" aria-labelledby="records-title">
+              <h3 id="records-title">Last records</h3>
+              <ul id="records-list" class="records-list"></ul>
+              <p id="records-empty" class="state-line" hidden>No records yet.</p>
+            </section>
+          </div>
+
+          <p id="panel-error" class="panel-error" hidden>
+            <span>Could not refresh. Try again.</span>
+            <button type="button" id="retry-btn" class="btn btn--quiet btn--small">Retry</button>
+          </p>
+
+          <div class="actions">
+            <button type="button" id="start-btn" class="btn btn--primary" data-start>
+              <span class="btn__label">Start demo shop</span>
+              <span class="btn__arrow" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" focusable="false"><path d="M4.5 11.5l7-7M5.5 4.5h6v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
+            <button type="button" id="over-btn" class="btn btn--quiet" aria-disabled="true"><span class="btn__label">Start over</span></button>
+            <button type="button" id="export-btn" class="btn btn--quiet" aria-disabled="true"><span class="btn__label">Export records</span></button>
+          </div>
+          <p id="action-error" class="action-error" hidden></p>
+          <p class="note">Everything here is invented demo data.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <p><a href="https://imali-ai.ebenworks.co" rel="noopener noreferrer">An open-source companion to Imali AI.</a></p>
+    <p>Imali AI: Africa's smartest AI Business OS.</p>
+    <p><a href="https://github.com/ebenworks-systems/imali-ai-feature-phone" rel="noopener noreferrer">Built with Kiro. MIT licence.</a></p>
+  </footer>
+
+  <div id="echo" class="sr-only" role="status" aria-live="polite"></div>
+  <div id="panel-status" class="sr-only" role="status" aria-live="polite"></div>
+</body>
+</html>
