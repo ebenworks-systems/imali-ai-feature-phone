@@ -33,7 +33,7 @@ are the ticked tasks in each spec's `tasks.md` on 8 November 2026.
 | `ledger-core` | 30 | Money parsing and formatting, records, undo by reversal, today, who owes, the closing summary and the export |
 | `text-messages` | 46 | The rule reader, questions for unclear amounts, short replies, the optional model reader and its check, `handleText` |
 | `dialled-menu` | 34 | A stateless USSD menu that replays the whole path on each request, the screens, the guard against saving twice, `npm run check:screens` |
-| `server-and-store` | 68 | The Hono routes for Africa's Talking and the page, the Postgres store, the serverless entry, the callback key and the demo limits |
+| `server-and-store` | 69 | The Hono routes for Africa's Talking and the page, the Postgres store, the serverless entry, the callback key and the demo limits |
 | `browser-phone` | 67 | The candybar phone drawn in CSS, typing on the keypad, the ledger card, the judges' check list |
 
 ## What the reviews sent back

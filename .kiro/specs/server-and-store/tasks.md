@@ -417,13 +417,19 @@ the fixed clock, and replace the two handlers with `vi.mock` so they check exact
   - Files: none
   - Requirements: 75, 76, 77
 
-- [ ] 9.4 **Check the first deploy (done by a person with the Vercel and Neon accounts).** With the variables set on
+- [x] 9.4 **Check the first deploy (done by a person with the Vercel and Neon accounts).** With the variables set on
   Vercel and `npm run db:migrate` run against Neon: `GET /health` answers; `POST /api/phone/demo` creates a shop; the
   rows are in Neon; `POST /ussd` with form fields answers `CON ...`; with `AT_CALLBACK_KEY` set, `POST /ussd` without
   `?k=` answers 403 and with it answers `CON ...`; the Vercel runtime log shows the start line
   (`store=postgres ...`) and no secret; a request to `/sms` reaches the function with the path `/sms` (the rewrite
   keeps the original path). If a check fails, use the fallbacks in the design's Risks section. Then dial
   `*384*46254#` in the Africa's Talking simulator and send a text to `46254`.
+  - Checked 8 Nov 2026 on the production deploy of 72d5346, after `npm run db:migrate` applied 001 and 002: `/health`
+    200; `POST /api/phone/demo` 201; `/ussd` and `/sms` without `?k=` 403, `/ussd` with it `CON ...`, and a demo number
+    with it `END No demo shop for this number. Start a demo first.`; the rows are in Neon; the runtime log's start line is
+    `store=postgres gemini=off sms=sandbox callback=key salt=set`, with no secret in the log; `/sms` reached the function
+    as `/sms`. In the simulator, `*384*46254#` signed up a shop and saved "sale R45 bread", and a text to `46254`
+    answered "Saved: Tendai owes R20 (sugar). Tendai owes R20 in total."
   - Files: none
   - Requirements: 5, 12, 80, 82
 
