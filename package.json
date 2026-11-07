@@ -9,7 +9,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check:screens": "echo \"Not implemented yet\"",
+    "check:screens": "tsc && node scripts/check-screens.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

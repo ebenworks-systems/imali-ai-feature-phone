@@ -4,7 +4,9 @@ import type { Shop } from '../../core/shops/types.js';
 import type { Record, ReversalRecord } from '../../core/records/types.js';
 import {
   LedgerStore,
-  RecordAlreadyReversedError
+  DuplicateRecordError,
+  RecordAlreadyReversedError,
+  ShopAlreadyExistsError
 } from '../interface.js';
 
 /**
@@ -19,6 +21,12 @@ export class MemoryStore implements LedgerStore {
   private reverseIndexByRecordId: Map<string, boolean> = new Map(); // Track which records are reversed
 
   async createShop(shop: Shop): Promise<void> {
+    if (this.shops.has(shop.id)) {
+      throw new ShopAlreadyExistsError(`id ${shop.id}`);
+    }
+    if (this.shopsByPhone.has(shop.phone)) {
+      throw new ShopAlreadyExistsError('phone number');
+    }
     this.shops.set(shop.id, shop);
     this.shopsByPhone.set(shop.phone, shop);
   }
@@ -32,6 +40,11 @@ export class MemoryStore implements LedgerStore {
   }
 
   async appendRecord(record: Record): Promise<void> {
+    // The same id again is refused first, before any other check, and nothing changes.
+    if (this.records.has(record.id)) {
+      throw new DuplicateRecordError(record.id);
+    }
+
     // Check if this is a reversal of an already-reversed record
     if (record.kind === 'reversal') {
       const reversedRecordId = record.reversesRecordId;

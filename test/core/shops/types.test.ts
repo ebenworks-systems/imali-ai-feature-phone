@@ -40,6 +40,27 @@ describe('shops', () => {
     });
   });
 
+  describe('createShop with a given id', () => {
+    const params = {
+      name: 'Tendai Shop',
+      phone: '+27001234567',
+      currency: 'ZAR' as const,
+      timeZone: 'Africa/Johannesburg'
+    };
+
+    it('uses the id it is given', () => {
+      const shop = createShop({ ...params, id: 'shop_ussd_S1' });
+      expect(shop.id).toBe('shop_ussd_S1');
+      expect(shop.name).toBe('Tendai Shop');
+      expect(shop.phone).toBe('+27001234567');
+      expect(Object.keys(shop).sort()).toEqual(['createdAt', 'currency', 'id', 'name', 'phone', 'timeZone']);
+    });
+
+    it('makes an id starting shop_ when none is given', () => {
+      expect(createShop(params).id).toMatch(/^shop_/);
+    });
+  });
+
   describe('validateShopName', () => {
     it('accepts valid names', () => {
       expect(validateShopName('Shop')).toBe(true);

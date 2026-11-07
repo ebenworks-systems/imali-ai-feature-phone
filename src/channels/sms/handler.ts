@@ -41,6 +41,7 @@ import {
 } from '../../core/index.js';
 import type { ModelReader } from '../../ai/reader.js';
 import { checkProposal } from '../../ai/check.js';
+import { normalizePhone } from '../phone.js';
 import { PENDING_TTL_MS, type PendingQuestion, type PendingStore } from './pending.js';
 import {
   AMOUNT_MUST_BE_MORE_THAN_ZERO,
@@ -107,11 +108,15 @@ interface Context {
 // ============================================================================
 
 export async function handleText(params: HandleTextParams): Promise<HandleTextResult> {
-  const phone = params.phone.trim();
+  // The dialled menu finds the shop by the normalised number ("+27 00 000 1234" and "+27000001234" are one phone),
+  // so a text does too. A number that cannot be normalised is used as it was written.
+  const written = params.phone.trim();
+  const phone = normalizePhone(written) ?? written;
   const text = typeof params.text === 'string' ? params.text : '';
   const { store, pending, now, reader } = params;
 
-  const shop = await store.findShopByPhone(phone);
+  // A shop stored under the number as written (before numbers were normalised) is still found.
+  const shop = (await store.findShopByPhone(phone)) ?? (phone !== written ? await store.findShopByPhone(written) : null);
   if (!shop) {
     return { reply: await signUp({ store, pending, phone, now }, text) };
   }

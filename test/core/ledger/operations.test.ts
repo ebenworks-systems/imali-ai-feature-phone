@@ -2,7 +2,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { LedgerStore } from '../../../src/store/interface.js';
-import { RecordAlreadyReversedError } from '../../../src/store/interface.js';
+import { DuplicateRecordError, RecordAlreadyReversedError } from '../../../src/store/interface.js';
 import { MemoryStore } from '../../../src/store/memory/store.js';
 import { createShop } from '../../../src/core/shops/types.js';
 import {
@@ -349,6 +349,58 @@ describe('ledger operations', () => {
           customer: 'Tendai'
         });
       }
+    });
+  });
+
+  describe('a given record id', () => {
+    const amount: ParsedAmount = { cents: 4500, requiresConfirmation: false };
+    const common = { amount, channel: 'ussd' as const, originalWords: '1*45*1*1', now };
+
+    it('is used by recordSale, recordExpense, recordDebt and recordPayment', async () => {
+      const sale = await recordSale(store, shop, { ...common, id: 'rec_ussd_A_4' });
+      const expense = await recordExpense(store, shop, { ...common, id: 'rec_ussd_B_4' });
+      const debt = await recordDebt(store, shop, { ...common, customer: 'Tendai', id: 'rec_ussd_C_4' });
+      const payment = await recordPayment(store, shop, { ...common, customer: 'Tendai', id: 'rec_ussd_D_4' });
+
+      for (const [result, id] of [
+        [sale, 'rec_ussd_A_4'],
+        [expense, 'rec_ussd_B_4'],
+        [debt, 'rec_ussd_C_4'],
+        [payment, 'rec_ussd_D_4']
+      ] as const) {
+        expect('success' in result && result.success).toBe(true);
+        if ('success' in result && result.success) expect(result.data.id).toBe(id);
+        expect(await store.findRecordById(id)).not.toBeNull();
+      }
+    });
+
+    it('is used by undoLastRecord for the reversal', async () => {
+      await recordSale(store, shop, { ...common, id: 'rec_ussd_A_4' });
+      const result = await undoLastRecord(store, shop, {
+        channel: 'ussd',
+        originalWords: '7*1',
+        now,
+        id: 'rec_ussd_A_2'
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.reversal.id).toBe('rec_ussd_A_2');
+        expect(result.data.reversal.reversesRecordId).toBe('rec_ussd_A_4');
+      }
+      expect((await store.findRecordById('rec_ussd_A_2'))?.kind).toBe('reversal');
+    });
+
+    it('makes a random id starting rec_ when none is given', async () => {
+      const sale = await recordSale(store, shop, common);
+      expect('success' in sale && sale.success && sale.data.id).toMatch(/^rec_/);
+      const undo = await undoLastRecord(store, shop, { channel: 'sms', originalWords: 'undo', now });
+      expect(undo.success && undo.data.reversal.id).toMatch(/^rec_/);
+    });
+
+    it('refuses the same id twice with DuplicateRecordError and keeps one copy', async () => {
+      await recordSale(store, shop, { ...common, id: 'rec_ussd_A_4' });
+      await expect(recordSale(store, shop, { ...common, id: 'rec_ussd_A_4' })).rejects.toThrow(DuplicateRecordError);
+      expect(await store.listRecords(shop.id)).toHaveLength(1);
     });
   });
 });

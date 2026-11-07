@@ -9,12 +9,13 @@ import { getCurrencyInfo, type Currency } from './currency.js';
  * - Show R45 when cents are zero (no .00)
  * - Show R45.50 when cents are non-zero (with .50)
  * - Add thousands comma separator (always, no locale)
+ * - A negative amount has its minus sign before the currency symbol: -R60, never R-60
  * - Plain ASCII only
  * 
  * @param cents - Integer number of cents
  * @param currency - Currency code
  * @param options - Formatting options
- * @returns Formatted string like 'R1,240.50'
+ * @returns Formatted string like 'R1,240.50' or '-R60'
  */
 export function formatCents(
   cents: number,
@@ -25,8 +26,8 @@ export function formatCents(
 ): string {
   const info = getCurrencyInfo(currency);
   
-  // Handle negative amounts
-  const isNegative = cents < 0;
+  // The sign goes before the symbol. Zero (and -0) never gets one.
+  const sign = cents < 0 ? '-' : '';
   const absCents = Math.abs(cents);
   
   // Extract whole and decimal parts
@@ -41,12 +42,10 @@ export function formatCents(
   
   if (showDecimals) {
     const decimalStr = decimal.toString().padStart(2, '0');
-    const sign = isNegative ? '-' : '';
-    return `${info.symbol}${sign}${wholeStr}.${decimalStr}`;
+    return `${sign}${info.symbol}${wholeStr}.${decimalStr}`;
   }
   
-  const sign = isNegative ? '-' : '';
-  return `${info.symbol}${sign}${wholeStr}`;
+  return `${sign}${info.symbol}${wholeStr}`;
 }
 
 export { getCurrencyInfo };

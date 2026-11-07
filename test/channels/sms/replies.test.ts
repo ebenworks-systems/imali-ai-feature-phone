@@ -254,7 +254,7 @@ describe('buildReply wording', () => {
     it('when more was spent than sold, in hand is below zero', () => {
       expect(
         reply({ ...ZAR, today: { sales: 10000, salesCount: 2, spent: 15000, inHand: -5000 } })
-      ).toBe('Today: sales R100 (2), spent R150, in hand R-50.');
+      ).toBe('Today: sales R100 (2), spent R150, in hand -R50.');
     });
   });
 

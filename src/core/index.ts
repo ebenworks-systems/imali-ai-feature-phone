@@ -145,7 +145,9 @@ export type {
 } from '../store/interface.js';
 
 export {
-  RecordAlreadyReversedError
+  RecordAlreadyReversedError,
+  DuplicateRecordError,
+  ShopAlreadyExistsError
 } from '../store/interface.js';
 
 // ============================================================================

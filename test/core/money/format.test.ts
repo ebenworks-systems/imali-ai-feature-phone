@@ -63,8 +63,9 @@ describe('formatCents', () => {
   });
 
   describe('edge cases', () => {
-    it('formats negative amounts', () => {
-      expect(formatCents(-4550, 'ZAR')).toBe('R-45.50');
+    it('formats negative amounts with the sign before the symbol', () => {
+      expect(formatCents(-4550, 'ZAR')).toBe('-R45.50');
+      expect(formatCents(-6000, 'ZAR')).toBe('-R60');
     });
 
     it('formats with trailing zeros', () => {
@@ -79,6 +80,54 @@ describe('formatCents', () => {
 
     it('shows decimals when enabled with zero', () => {
       expect(formatCents(0, 'ZAR', { alwaysShowDecimals: true })).toBe('R0.00');
+    });
+  });
+
+  describe('negative amounts (sign before the symbol, every currency)', () => {
+    const symbols = [
+      ['ZAR', 'R'],
+      ['USD', '$'],
+      ['KES', 'KSh'],
+      ['NGN', 'N'],
+      ['GHS', 'GHS'],
+      ['ZMW', 'K'],
+      ['BWP', 'P']
+    ] as const;
+
+    for (const [currency, symbol] of symbols) {
+      it(`${currency}: -${symbol}60, -${symbol}45.50 and -${symbol}1,200`, () => {
+        expect(formatCents(-6000, currency)).toBe(`-${symbol}60`);
+        expect(formatCents(-4550, currency)).toBe(`-${symbol}45.50`);
+        expect(formatCents(-120000, currency)).toBe(`-${symbol}1,200`);
+        expect(formatCents(-5, currency)).toBe(`-${symbol}0.05`);
+      });
+
+      it(`${currency}: never puts the sign after the symbol`, () => {
+        expect(formatCents(-6000, currency)).not.toContain(`${symbol}-`);
+      });
+    }
+
+    it('keeps the thousands comma and the cents', () => {
+      expect(formatCents(-123456789, 'KES')).toBe('-KSh1,234,567.89');
+    });
+
+    it('works with alwaysShowDecimals', () => {
+      expect(formatCents(-6000, 'ZAR', { alwaysShowDecimals: true })).toBe('-R60.00');
+    });
+
+    it('never signs zero', () => {
+      expect(formatCents(0, 'ZAR')).toBe('R0');
+      expect(formatCents(-0, 'ZAR')).toBe('R0');
+      expect(formatCents(0, 'ZAR', { alwaysShowDecimals: true })).toBe('R0.00');
+    });
+
+    it('leaves positive amounts as they were', () => {
+      expect(formatCents(6000, 'ZAR')).toBe('R60');
+      expect(formatCents(4550, 'KES')).toBe('KSh45.50');
+    });
+
+    it('is plain ASCII', () => {
+      expect(/^[\x20-\x7e]+$/.test(formatCents(-123456789, 'GHS'))).toBe(true);
     });
   });
 });

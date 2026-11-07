@@ -224,4 +224,33 @@ describe('records', () => {
       expect(reversalRecord.originalWords).toBe('undo');
     });
   });
+
+  describe('a given record id', () => {
+    it('is used by each of the four record factories', () => {
+      const base = { amount: 4500, channel: 'ussd' as const, originalWords: '1*45*1*1', now };
+      expect(createSaleRecord(shopId, { ...base, id: 'rec_ussd_S1_4' }).id).toBe('rec_ussd_S1_4');
+      expect(createExpenseRecord(shopId, { ...base, id: 'rec_ussd_S1_5' }).id).toBe('rec_ussd_S1_5');
+      expect(createDebtRecord(shopId, { ...base, customer: 'Tendai', id: 'rec_ussd_S1_6' }).id).toBe('rec_ussd_S1_6');
+      expect(createPaymentRecord(shopId, { ...base, customer: 'Tendai', id: 'rec_ussd_S1_7' }).id).toBe('rec_ussd_S1_7');
+    });
+
+    it('is used by a reversal as its fifth argument', () => {
+      const sale = createSaleRecord(shopId, { amount: 5000, channel: 'sms', originalWords: 'sold 50', now });
+      const reversal = createReversal(sale, 'ussd', '7*1', now, 'rec_ussd_S1_2');
+      expect(reversal.id).toBe('rec_ussd_S1_2');
+      expect(reversal.reversesRecordId).toBe(sale.id);
+    });
+
+    it('makes a random id starting rec_ when none is given', () => {
+      const base = { amount: 4500, channel: 'sms' as const, originalWords: 'x', now };
+      const a = createSaleRecord(shopId, base);
+      const b = createSaleRecord(shopId, base);
+      expect(a.id).toMatch(/^rec_/);
+      expect(a.id).not.toBe(b.id);
+      expect(createExpenseRecord(shopId, base).id).toMatch(/^rec_/);
+      expect(createDebtRecord(shopId, { ...base, customer: 'Tendai' }).id).toMatch(/^rec_/);
+      expect(createPaymentRecord(shopId, { ...base, customer: 'Tendai' }).id).toMatch(/^rec_/);
+      expect(createReversal(a, 'sms', 'undo', now).id).toMatch(/^rec_/);
+    });
+  });
 });

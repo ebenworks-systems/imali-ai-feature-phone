@@ -13,14 +13,16 @@ export interface Shop {
 }
 
 /**
- * Creates a new shop with generated ID and current timestamp
+ * Creates a new shop with current timestamp. The ID is generated unless the caller gives one
+ * (the dialled menu derives it from the session, so a repeated request cannot make a second shop).
  */
 export function createShop(
-  params: Omit<Shop, 'id' | 'createdAt'>
+  params: Omit<Shop, 'id' | 'createdAt'> & { id?: string }
 ): Shop {
+  const { id, ...rest } = params;
   return {
-    ...params,
-    id: generateShopId(),
+    ...rest,
+    id: id ?? generateShopId(),
     createdAt: new Date().toISOString()
   };
 }

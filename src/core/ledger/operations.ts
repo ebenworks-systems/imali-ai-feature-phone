@@ -66,6 +66,7 @@ export async function recordSale(
   store: LedgerStore,
   shop: Shop,
   params: {
+    id?: string; // Optional record id. Without it a random one is made.
     amount: ParsedAmount;
     item?: string;
     channel: Channel;
@@ -84,6 +85,7 @@ export async function recordSale(
 
   // Create and save the record
   const record = createSaleRecord(shop.id, {
+    id: params.id,
     amount: params.amount.cents,
     item: params.item,
     channel: params.channel,
@@ -110,6 +112,7 @@ export async function recordExpense(
   store: LedgerStore,
   shop: Shop,
   params: {
+    id?: string; // Optional record id. Without it a random one is made.
     amount: ParsedAmount;
     item?: string;
     channel: Channel;
@@ -128,6 +131,7 @@ export async function recordExpense(
 
   // Create and save the record
   const record = createExpenseRecord(shop.id, {
+    id: params.id,
     amount: params.amount.cents,
     item: params.item,
     channel: params.channel,
@@ -154,6 +158,7 @@ export async function recordDebt(
   store: LedgerStore,
   shop: Shop,
   params: {
+    id?: string; // Optional record id. Without it a random one is made.
     amount: ParsedAmount;
     customer: string;
     item?: string;
@@ -173,6 +178,7 @@ export async function recordDebt(
 
   // Create and save the record
   const record = createDebtRecord(shop.id, {
+    id: params.id,
     amount: params.amount.cents,
     customer: params.customer,
     item: params.item,
@@ -201,6 +207,7 @@ export async function recordPayment(
   store: LedgerStore,
   shop: Shop,
   params: {
+    id?: string; // Optional record id. Without it a random one is made.
     amount: ParsedAmount;
     customer: string;
     item?: string;
@@ -220,6 +227,7 @@ export async function recordPayment(
 
   // Create and save the record
   const record = createPaymentRecord(shop.id, {
+    id: params.id,
     amount: params.amount.cents,
     customer: params.customer,
     item: params.item,
@@ -251,6 +259,7 @@ export async function undoLastRecord(
   store: LedgerStore,
   shop: Shop,
   params: {
+    id?: string; // Optional id for the reversal record. Without it a random one is made.
     channel: Channel;
     originalWords: string;
     now: Date;
@@ -283,7 +292,8 @@ export async function undoLastRecord(
     recordToReverse,
     params.channel,
     params.originalWords,
-    params.now
+    params.now,
+    params.id
   );
 
   // Try to save the reversal

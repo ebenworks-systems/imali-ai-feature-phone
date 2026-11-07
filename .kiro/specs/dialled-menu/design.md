@@ -11,11 +11,12 @@ decision below.
 | `Figure.cents` is the amount just saved, not the new total. `recordSale` returns `{ kind: 'salesToday', cents: 4500 }` for a R45 sale. | "Sales today R1,285" is worked out after the save with `getTodaySummary`, and a customer's total with `getCustomerBalance`. |
 | `recordSale`, `recordExpense`, `recordDebt` and `recordPayment` do not check the amount is above zero. They return `needsConfirmation` (and save nothing) when `amount.requiresConfirmation` is true. | The menu checks the amount with `validateAmount` before any confirm screen. After the owner's second confirm it passes `{ cents, requiresConfirmation: false }`. |
 | `parseAmount("2 200", ...)` returns `ambiguous` with two amounts (R200 and R2,200). `"2,200"` already returns R2,200. | `readAmount` takes the larger amount of an `ambiguous` result, which is always the thousands reading. A test pins this. |
-| The record and shop factories always generate a random id. `MemoryStore.appendRecord` accepts a record whose id already exists (it overwrites the map entry and adds a second copy to the list). `MemoryStore.createShop` overwrites silently. | Three small core and store changes (tasks 3 to 5): an optional `id`, and typed duplicate errors. They are backwards compatible. |
+| The record and shop factories always generate a random id. `MemoryStore.appendRecord` accepts a record whose id already exists (it overwrites the map entry and adds a second copy to the list). `MemoryStore.createShop` overwrites silently. | Three small core and store changes (tasks 4 to 6): an optional `id`, and typed duplicate errors. They are backwards compatible. |
 | `findShopByPhone` is an exact string match. Tests and seeds use `+27 00 000 1234` with spaces. Africa's Talking sends `+27000001234`. `normalizePhone` is described in the old design but does not exist. | `src/channels/phone.ts` makes one normalised form. Both channels use it. |
 | `undoLastRecord` reverses `activeRecords(...)`'s last record, and returns `{ success: false, error: 'Nothing to undo' }` when there is none. Its `figure` is the undone amount, not a new total. | The undo preview uses the same `activeRecords` call, a test checks that the preview and the undone record agree, and the new figure is read after the undo. |
 | `createShop` stamps its own `createdAt` from the system clock. | Left alone. Only `createdAt` on a new shop is affected; no test depends on it. |
-| `src/channels/index.ts` does not exist yet. The `text-messages` handler, replies, pending store and model reader are not built (its tasks are unticked). | This spec creates `src/channels/index.ts` (or adds one line if the text-messages work has made it by then). Tasks 30 and 31 are blocked on the text-messages handler and replies. |
+| `formatCents(-6000, 'ZAR')` returns `R-60`: the sign goes after the symbol. The text replies show it as `in hand R-50`, and one test in `format.test.ts` and one in `replies.test.ts` pin it. | Task 3 writes the sign before the symbol (`-R60`) for every currency, so both channels agree. Those two tests change; nothing else does. |
+| `src/channels/index.ts` exists and the `text-messages` channel is finished: `handleText`, `InMemoryPendingStore`, the replies and the model reader. `handleText` finds the shop with `phone.trim()`, not a normalised number, and signs up new owners as ZAR in `Africa/Johannesburg`. | Task 29 adds the menu's exports to the existing `index.ts`. Task 31 makes `handleText` find a shop by the normalised number (a text from `+27 00 000 1234` reaches the shop made at `+27000001234`). A shop that text messages sign up stays ZAR and Johannesburg; the menu's country question is the menu's own. |
 
 ## Modules
 
@@ -74,7 +75,7 @@ export function ussdProblems(response: string): string[];   // [] when fine; els
 export function smsProblems(reply: string): string[];       // [] when fine; else "over 160", "not ASCII"
 
 // src/channels/phone.ts
-export function normalizePhone(raw: string): string | null; // "+27 00 000 1234" -> "+270000001234"; null when not 7-15 digits
+export function normalizePhone(raw: string): string | null; // "+27 00 000 1234" -> "+27000001234"; null when not 7-15 digits
 ```
 
 ```ts
@@ -101,9 +102,11 @@ export const MAX_SHOP_NAME = 24, MAX_CUSTOMER_NAME = 20, MAX_ITEM = 20;
 // src/channels/ussd/text.ts
 export function plain(text: string): string;               // anything outside 32..126 becomes '?'
 export function clip(text: string, max: number): string;   // plain(text), cut at max characters
-export function money(cents: number, currency: Currency): string; // formatCents
+export function money(cents: number, currency: Currency): string; // formatCents ('-R60' when below zero)
+export const HINT = '0 Back 00 Menu';                       // the hint line, 14 characters
 export function dayLabel(date: string): string;            // "2025-11-03" -> "Mon 3 Nov"
 export const NOTICE: { readonly [key: string]: string };   // every notice text, listed under "Notices"
+export const LABEL: { whoPaidBack: 'Who paid back?'; otherName: '8 Other name'; more: '9 More' };  // list lines; the page budgets use the same text
 ```
 
 ```ts
@@ -118,12 +121,16 @@ export const SCREEN_IDS = [
 ] as const;
 export type ScreenId = (typeof SCREEN_IDS)[number];
 
+export type Kind = 'sale' | 'expense' | 'debt' | 'payment';
+export interface Entry { kind: Kind; cents: number; item?: string; customer?: string }  // one entry as the screens say it
+
 export interface Screen {
   id: ScreenId;
   end: boolean;
   notice?: string;       // first line, dropped first when the screen is too long
   lines: string[];       // joined with '\n'
   shrink?: string[][];   // smaller versions of `lines`, tried in order (used by the closing summary)
+  hint?: boolean;        // add the HINT line last, but only when the result still fits (never on `end` screens)
 }
 export function toResponse(screen: Screen): string; // the length guard: see "Keeping within 182"
 ```
@@ -134,11 +141,16 @@ export interface PageRange { start: number; end: number }  // end is exclusive
 export function paginate(rowLengths: number[], budget: number, maxRows: number): PageRange[];
 export function payWhoBudget(): number;                    // 117
 export function owesBudget(headerLength: number): number;  // 182 - notice - header - "9 More"
+export const PAY_WHO_MAX_ROWS = 7;
+export function payWhoPages(rows: OwesRow[], currency: Currency): PageRange[];
+export function owesPages(rows: OwesRow[], currency: Currency): PageRange[];
+export function totalOwed(rows: OwesRow[]): number;
+export function clampPage(page: number, pageCount: number): number;   // the records can change between requests
 ```
 
 ```ts
 // src/channels/ussd/machine.ts
-export type Kind = 'sale' | 'expense' | 'debt' | 'payment';
+export type { Kind } from './screen.js';   // defined in screen.ts, with Entry, so the renderers need not import the machine
 export interface Draft { kind: Kind; customer?: string; cents?: number; item?: string; bigOk?: boolean }
 export type Frame =
   | { id: 'signupName' } | { id: 'signupCurrency'; name: string }
@@ -165,6 +177,7 @@ export interface MenuPorts {
   undoTarget(): Promise<UndoTarget | null>;                  // what undoLastRecord would reverse
 }
 export function makePorts(a: { store: LedgerStore; shop: Shop | null; sessionId: string; phone: string; now: Date }): MenuPorts;
+export const COUNTRIES: ReadonlyArray<{ currency: Currency; timeZone: string }>;   // the seven sign-up choices, in order
 
 // src/channels/ussd/actions.ts
 export interface ActionContext { store: LedgerStore; shop: Shop; sessionId: string; path: string[]; now: Date }
@@ -179,7 +192,13 @@ export async function undoLast(ctx: ActionContext, step: number): Promise<UndoOu
 where `cents` is positive when the customer owes and negative when the customer has credit). The renderers in
 `results.ts` turn them into text.
 
-### Changes to the core and the store (tasks 3 to 5)
+### Changes to the core and the store (tasks 3 to 6)
+
+```ts
+// src/core/money/format.ts (task 3): the sign goes before the currency symbol.
+formatCents(-6000, 'ZAR')       // '-R60'      (was 'R-60')
+formatCents(-455050, 'KES')     // '-KSh4,550.50'
+```
 
 ```ts
 // src/core/records/types.ts: create*Record params and createReversal get an optional id
@@ -290,7 +309,29 @@ carry more than the owner's keystrokes, so closing the gap fully would need serv
 
 `<Notice>` below means "the notice line, when there is one, comes first". Money is `formatCents` (`R45`, `R45.50`,
 `R1,240`). `X` is a customer name (clipped to 20), `item` is clipped to 20, and the shop name to 24, all through
-`plain`. `CON ` or `END ` is added by `toResponse`.
+`plain`. `CON ` or `END ` is added by `toResponse`. The hint line (below) is added by `toResponse` too, so it is not
+repeated in the tables.
+
+### The hint line
+
+`0 Back 00 Menu` (14 characters) is the last line of a screen, after the notice and every row, when the screen sets
+`hint` and the whole text then stays within 182 characters. When it does not fit it is left out, and nothing else
+changes: the notice, the rows, `8 Other name` and `9 More` stay as they were.
+
+| Screen | Hint |
+|---|---|
+| `amount`, `item`, `customer` (typed answers) | yes |
+| `payWho` (paid-back list), `owesList` (who-owes list with `9 More`) | yes |
+| `confirm`, `confirmBig`, `undoConfirm` | yes |
+| `signupName`, `signupCurrency` | no: there is no menu yet, and `0` and `00` only return to the shop-name screen |
+| `main` | no: fixed by `screens.md` |
+| every `END` screen, including the last who-owes screen | no |
+
+Example. The confirm text stays on one line, as the tables show, and the hint goes on a new line after it:
+```
+CON Save sale R45 bread? 1 Yes 2 No
+0 Back 00 Menu
+```
 
 ### Sign-up (CON)
 
@@ -401,7 +442,7 @@ The last (or only) screen has no `9 More` and is an `END` screen. When nobody ow
 | too big | `These numbers are too big to show here.` |
 
 The item is left out (with its leading space) when there is none. A negative `In hand` shows as the core formats it
-(`R-60`).
+(`-R60`, the sign before the symbol, in every currency).
 
 ### Notices (first line)
 
@@ -449,19 +490,26 @@ On an item screen `1` is read before `readItem` and means "skip".
 2. Try `lines` without the notice.
 3. Try each `shrink` version in order (the closing summary: without the date line, then also without the counts).
 4. Otherwise return `END These numbers are too big to show here.`
+5. Last, when the screen sets `hint` and is not an `end` screen: add `\n0 Back 00 Menu` (15 characters) to the text
+   chosen in steps 1 to 3, but only if the result is still 182 characters or fewer. Otherwise leave the chosen text
+   as it is.
+
+The hint comes last on purpose. Steps 1 to 4 never see it, so it can never cost the owner the notice, a row or a
+figure, and a page of a list holds the same rows whether or not the hint is shown. The tables below are the lengths
+without the hint; a screen that has it is 15 characters longer.
 
 Every response goes through it, so no response can pass the limit. The renderers keep the notice, so it is dropped
 only for unusually large figures. Worst cases, with a 24-character shop name, 20-character names and items, and the
 widest symbol `GHS`, as measured when this design was written (the tests assert them):
 
-| Screen | R999,999.99 | 15-character figure (`GHS9,999,999.99`) | 24-character figure (largest safe amount) |
+| Screen (`GHS`, the widest symbol) | `GHS999,999.99` (13) | `GHS9,999,999.99` (15) | `GHS90,071,992,547,409.91` (24, the largest safe amount) |
 |---|---|---|---|
 | main menu with the longest notice | 170 | 172 | 181 |
 | confirm, debt with item | 77 | 79 | 88 |
 | big-amount confirm | 53 | 55 | 64 |
 | saved, debt with item (the longest ending screen) | 118 | 122 | 140 |
-| today | 73 | 79 | 106 |
-| close | 160 | 172 | 226 (too long: shrinks, then falls back) |
+| today | 72 | 78 | 105 |
+| close | 159 | 171 | too long: shrinks, then falls back to the too-big screen |
 | currency choice with a notice | 145 | 145 | 145 |
 
 The aggregate screens (main menu, today, close, lists) are therefore guaranteed for any figure up to 15 characters.
@@ -478,6 +526,8 @@ always reserves room for the longest notice and for the `9 More` line:
   most 7 rows whatever the length.
 - Who owes: `182 - 31 - (header length + 1) - 6`. The header is `Owed to you: <total>`. Three rows of 35 fit with the
   longest data.
+- The budgets do not reserve room for the hint line. A list page is the same with or without the hint; the hint is
+  shown when the finished screen leaves room for it, which with the longest data it often does not.
 - Every page holds at least one row. Rows are sorted by amount (largest first), then by lower-case name, so the order
   is the same on every request.
 
@@ -494,8 +544,12 @@ clash by accident (`n` is a number, so `s = A_1, n = 2` and `s = A, n = 1_2` can
 **Saving** (`saveDraft`):
 
 1. `existing = store.findRecordById(id)`. If it exists, go to step 4.
-2. Call the ledger operation (`recordSale`, ...) with `id`. A `needsConfirmation` result or `success: false` is a failure
-   (`saveFailed`), because the menu has already checked the amount.
+2. Check there is room: the draft has a safe amount above zero, an amount over 1,000,000.00 was confirmed twice
+   (`bigOk`), and saving it leaves every total on the saved screen (today's sales, money in hand, the customer's
+   balance, total owed) a safe whole number of cents. Otherwise `saveFailed`, and nothing is saved. (The text
+   messages make the same check, in `hasRoom`.)
+   Then call the ledger operation (`recordSale`, ...) with `id`. A `needsConfirmation` result or `success: false` is a
+   failure (`saveFailed`), because the menu has already checked the amount.
 3. If the store throws `DuplicateRecordError`, another copy won the race: `existing = store.findRecordById(id)`.
 4. Compare `existing` with the draft: same `shopId`, `kind`, `amount`, `customerKey` and `item`. If they match, build
    the `Saved:` screen from the records as they are now. If not, return `saveFailed` and save nothing.
@@ -521,8 +575,8 @@ something else was saved in between. The record is saved once either way.
 
 ## Shared with the text messages
 
-- Both channels find the shop with `normalizePhone(...)` and make shops with the normalised number. Task 30 checks the
-  text-message handler does this and changes it if it does not.
+- Both channels find the shop with `normalizePhone(...)` and make shops with the normalised number. Task 31 checks the
+  text-message handler does this and changes it if it does not (today it uses `phone.trim()`, so it does not).
 - Both use the same `LedgerStore`, `recordSale` and the other operations, `getTodaySummary`, `getWhoOwes`,
   `getCustomerBalance` and `getDayCloseSummary`. The menu has no records or totals of its own.
 - A record from the menu has `channel: 'ussd'` and `originalWords` equal to the typed path up to the confirming input
@@ -536,6 +590,8 @@ something else was saved in between. The record is saved once either way.
 | Refused typed input | same screen, reason first, `CON` |
 | Wrong number on a choice screen | same screen, `Choose a number from the list.` first, `CON` |
 | `needsConfirmation` from the ledger | cannot happen after the menu's own confirm; `saveFailed` if it does |
+| A save that would leave a total that is not a safe whole number of cents | `saveFailed`, nothing saved |
+| A total already past a safe whole number when a screen is shown | the too-big screen (`END These numbers are too big to show here.`) instead of a wrong figure |
 | Duplicate record id, matching | the same `Saved:` screen, nothing added |
 | Duplicate record id, not matching | `saveFailed`, nothing added |
 | `ShopAlreadyExistsError` | carry on with the shop that exists |
@@ -552,7 +608,7 @@ imports with `.js`).
 **The phone helper** (`test/helpers/phone.ts`):
 
 ```ts
-export interface Shown { raw: string; end: boolean; body: string; lines: string[] }
+export interface Shown { raw: string; end: boolean; body: string; lines: string[]; screen: ScreenId }
 export function assertValidScreen(raw: string): void;   // throws with the screen text when ussdProblems is not empty
 export interface Phone {
   readonly sessionId: string;
@@ -569,7 +625,7 @@ the screen text when there is a problem, so a test cannot skip the check. A sess
 
 ```ts
 // a shop called "Demo Spaza" (ZAR) with no records yet
-const phone = dial({ store, phone: '+270000001234', now });
+const phone = dial({ store, phone: '+27000001234', now });
 expect((await phone.open()).lines[0]).toBe('Demo Spaza');              // text ""
 await phone.press('1');                                                // text "1"
 await phone.press('45');                                               // text "1*45"
@@ -585,9 +641,9 @@ expect((await phone.press('1')).raw).toBe('END Saved: sale R45. Sales today R45.
 | `test/channels/phone.test.ts` | spaces, hyphens, missing `+`, too short or long (5, 44) |
 | `test/channels/ussd/request.test.ts`, `ids.test.ts` | bad fields, path split, id shape (5, 8, 40) |
 | `test/channels/ussd/input.test.ts` | the amount cases above, names, items (17, 29, 33, 34) |
-| `test/channels/ussd/text.test.ts`, `screen.test.ts` | `plain`, `clip`, `dayLabel`, the length guard and its ladder (3, 4) |
+| `test/channels/ussd/text.test.ts`, `screen.test.ts` | `plain`, `clip`, `dayLabel`, the length guard and its ladder, the hint line both ways (3, 4, 52) |
 | `test/channels/ussd/pages.test.ts` | budgets 117 and the owes budget, at least one row, stable pages (27, 28, 37) |
-| `test/channels/ussd/screens.test.ts`, `results.test.ts` | exact text of every screen in the tables above, with longest data (3, 11, 16, 18, 23 to 32, 35 to 39, 48) |
+| `test/channels/ussd/screens.test.ts`, `results.test.ts` | exact text of every screen in the tables above, with longest data, the hint present and absent (3, 11, 16, 18, 23 to 32, 35 to 39, 48, 52, 53) |
 | `test/channels/ussd/machine.test.ts` | each transition row, `0`, `00`, refused input in the middle of a path, input after a terminal, with fake ports (8 to 15, 24 to 30) |
 | `test/channels/ussd/ports.test.ts` | owes order and ties, undo target equals what `undoLastRecord` undoes, idempotent shop creation (21, 27, 38) |
 | `test/channels/ussd/actions.test.ts` | save and undo, duplicates, mismatching duplicate, two at once (40 to 43, 45) |
@@ -603,7 +659,8 @@ expect((await phone.press('1')).raw).toBe('END Saved: sale R45. Sales today R45.
 | `test/channels/crosschannel.test.ts` | sale by text shows in the menu's Today figure, and the reverse; undo across channels (44) |
 
 Core and store changes add cases to `test/core/records/types.test.ts`, `test/core/ledger/operations.test.ts`,
-`test/core/shops/types.test.ts` and `test/store/memory/store.test.ts` (51).
+`test/core/shops/types.test.ts` and `test/store/memory/store.test.ts` (51). The negative-amount change edits
+`test/core/money/format.test.ts` and one case in `test/channels/sms/replies.test.ts` (53).
 
 **Worst-case data** (`src/channels/ussd/worst-case.ts`, used by the tests and by `check:screens`):
 
@@ -613,10 +670,12 @@ Core and store changes add cases to `test/core/records/types.test.ts`, `test/cor
   R999,999.99 or less each, so that every figure on the aggregate screens reaches 15 characters but not more (the
   ten customers owe less than 10,000,000 in all).
 - `seedWorstCase(store, currency, now)` makes the shop and records; `WORST_SESSIONS` is a list of
-  `{ name, inputs, sessionId?, prepare?, hugeFigures? }`. Each session is run on a fresh store, once per currency, by
-  pressing the inputs one by one. Three entries are special so that every screen id can be reached: a bad request
+  `{ name, channel?, inputs, sessionId?, phone?, noShop?, bare?, hugeFigures?, prepare? }`. Each session is run on a
+  fresh store, once per currency, by pressing the inputs one by one. A session with `channel: 'text'` is a
+  text-message conversation (each input is one message sent through `handleText`); `MENU_SESSIONS` and
+  `TEXT_SESSIONS` split the list, and `runWorstSession` and `runWorstTextSession` run them. Three entries are special so that every screen id can be reached: a bad request
   (`sessionId: ''`), a failed save (`prepare` seeds a record with the id the save will use and a different amount) and
-  a closing summary that cannot fit (`hugeFigures` seeds one sale of the largest safe amount). The sessions cover: the empty first call; every wrong number; every notice; each flow to its end with the longest data; the
+  a closing summary that cannot fit (`hugeFigures` seeds a sale, an expense, a debt and a payment of 4 to 9 quadrillion cents, which are still safe whole numbers, so even the shortest close screen is over 182). The sessions cover: the empty first call; every wrong number; every notice; each flow to its end with the longest data; the
   big-amount screen; both paid-back pages and Other name; both who-owes pages; each kind of undo; today; close; sign-up
   with each currency.
 
@@ -625,25 +684,40 @@ Core and store changes add cases to `test/core/records/types.test.ts`, `test/cor
 `dist/channels/ussd/worst-case.js`, `dist/channels/ussd/handler.js` and `dist/channels/limits.js`, runs every
 session, and:
 
-1. checks every response with `ussdProblems`;
+1. checks every response with `ussdProblems`, and fails when the "too big to show" fallback appears in a session
+   other than the one built to cause it (`hugeFigures`), because anywhere else it means a screen grew past 182 and
+   was replaced;
 2. collects the `screen` ids that `runMenu` reports and fails if any id in `SCREEN_IDS` was never shown;
 3. runs the text-message conversations from `WORST_SESSIONS` through `handleText` with the same data and checks each
-   reply with `smsProblems` (task 31; until the text-messages handler exists the script prints
-   `text replies: not built yet` and still passes, and task 31 turns a missing handler into a failure);
+   reply with `smsProblems` (task 32; task 30 builds the script for the menu first, and task 32 adds the text replies
+   and makes a missing `dist/channels/sms/handler.js` a failure with a message of its own);
 4. prints each failure as `<currency> <session> <text> -> <length> <problem>` and exits with code 1 if there were any.
 
 The save-hook `Check screen limits on save` already runs `npm run check:screens` when a file in `src/channels` or
-`src/core` is saved, so the script must work while the work is half built; the placeholder stays until task 29.
+`src/core` is saved, so the script must work while the work is half built; the placeholder stays until task 30.
 
-## Decisions to review
+## Decisions (settled)
 
-- **No `0 Back` or `00 Menu` hint on screens.** The texts you gave are used word for word and the main menu is fixed by
-  `screens.md`. Owners learn `0` and `00` by thumb. A one-line hint (`0 Back 00 Menu`, 14 characters) would fit on
-  most screens if you want it.
+These were open questions in the first draft. They are now decided, and the requirements and tasks follow them.
+
+- **A hint line `0 Back 00 Menu` ends the typed-answer screens, the `CON` list screens and the confirm screens,
+  only when it fits.** The texts first given are used word for word and the main menu is fixed by `screens.md`, so
+  the hint is a separate last line, added after everything else is settled, and left out when the screen would pass
+  182 characters. Nothing else is dropped to make room for it. It is never on the main menu or an `END` screen.
+  I also leave it off the two sign-up screens, where there is no menu yet: `00` there only returns to the shop-name
+  screen, so "Menu" would be wrong. (Requirement 52.)
 - **The last who-owes screen ends the session.** So does the only one. Owners who want the menu dial again, as with
-  Today and Close.
+  Today and Close. Accepted as designed.
 - **No** on a confirm screen returns to the main menu (`CON`, `Not saved.` first) instead of ending the session.
-- **Time zone follows the country in the sign-up list.** The `text-messages` spec sets every new shop to
-  `Africa/Johannesburg`. For Nigeria that moves "today" by an hour, so a closing at 23:30 in Lagos would land on the next
-  day. The two channels should agree; the text-message sign-up should follow this table when it is built.
-- **Customer names need a letter.** This stops `45` typed at the name prompt from becoming a customer.
+  Accepted as designed.
+- **Time zone follows the country in the sign-up list.** For Nigeria a shop on `Africa/Johannesburg` would move "today"
+  by an hour, so a closing at 23:30 in Lagos would land on the next day. Accepted as designed. The text-message
+  sign-up has no country question and makes every shop ZAR in `Africa/Johannesburg`; that stays as it is, and each
+  shop keeps its own time zone whichever channel made it.
+- **Customer names need a letter.** This stops `45` typed at the name prompt from becoming a customer. Accepted as
+  designed.
+- **A negative amount is written `-R60`.** The sign goes before the symbol in every currency, in `formatCents`, so the
+  menu and the text replies agree. (Requirement 53, task 3.)
+- **Nothing is blocked on the text messages any more.** `handleText` exists. The cross-channel test (task 31) saves a
+  sale by text and reads it on the menu's main screen, and the reverse; `check:screens` renders the text replies
+  as well (task 32).

@@ -14,9 +14,10 @@ and typed "duplicate" errors) that the repeated-request guarantee needs.
 
 Out of scope: the Hono route for `POST /ussd` (form parsing, `text/plain` header, checking that the call really comes
 from Africa's Talking), the Postgres store, the browser phone, and the text-message handler. The text-message handler
-belongs to the `text-messages` spec, which is only partly built (the reader exists; replies, pending questions, the
-model reader and the handler do not). Requirements 44 and 49 depend on that handler and are marked as such in
-`tasks.md`.
+belongs to the `text-messages` spec and is finished (`handleText`, its replies and `src/channels/index.ts` exist).
+Requirements 44 and 49 use it, and this spec changes it only if it does not find the shop by the normalised phone
+number. One small change reaches into the core: money below zero is written with the sign before the symbol
+(requirement 53), which also changes the text replies.
 
 Terms used below: a **choice screen** is one where the owner picks a number from a list. A **typed screen** is one
 where the owner types an amount, a name or an item. The **path** is the list of inputs in `text`. The **notice** is
@@ -37,7 +38,11 @@ an optional first line on a screen that tells the owner what went wrong, such as
 3. **WHEN** a screen would be longer than 182 characters because a figure is unusually large
    **THE SYSTEM SHALL** drop the notice first, then (on the closing summary only) the date line, then the counts in
    brackets, and **WHEN** it still does not fit **THE SYSTEM SHALL** return `END These numbers are too big to show
-   here.` It never returns a response over the limit.
+   here.` It never returns a response over the limit. The hint line of requirement 52 is not part of this ladder: it
+   is added last, only when it fits, and is never the reason anything else is dropped. **WHEN** a total on a screen
+   is not a safe whole number of cents **THE SYSTEM SHALL** return the same too-big screen instead of a wrong figure,
+   and **WHEN** saving a record would make a total on the saved screen unsafe **THE SYSTEM SHALL** save nothing and
+   return the not-saved screen of requirement 42.
 
 4. **WHEN** a shop name, customer name or item that was stored earlier (possibly by text message) is put on a screen
    **THE SYSTEM SHALL** replace every character outside printable ASCII with `?` and clip a shop name to 24
@@ -89,6 +94,8 @@ an optional first line on a screen that tells the owner what went wrong, such as
     **THE SYSTEM SHALL** ignore the spaces.
 
 ### Sign-up
+
+(Sign-up screens carry no hint line: there is no menu yet, and `0` and `00` only return to the shop-name screen.)
 
 16. **WHEN** the phone number has no shop and `text` is empty
     **THE SYSTEM SHALL** return `CON Welcome to the Imali AI ledger. Your shop name?`
@@ -260,4 +267,23 @@ an optional first line on a screen that tells the owner what went wrong, such as
 
 51. **WHEN** the core and the store are changed for this spec
     **THE SYSTEM SHALL** keep every existing call working: the new record id and shop id are optional, a record or shop
-    made without them gets a generated id as before, and all existing tests pass unchanged.
+    made without them gets a generated id as before, and all existing tests pass unchanged, except the two that pinned
+    the old wording of a negative amount (`R-45.50` in `format.test.ts` and `R-50` in `replies.test.ts`), which change
+    as requirement 53 says.
+
+### The back-and-menu hint
+
+52. **WHEN** a screen is a typed screen (amount, item or customer name), a `CON` list screen (the paid-back list and
+    the who-owes list that has `9 More`) or a confirm screen (save, big amount, undo)
+    **THE SYSTEM SHALL** end it with the line `0 Back 00 Menu` as its last line, **BUT ONLY WHEN** the whole response,
+    hint included, is at most 182 characters after the prefix; **WHEN** it is longer **THE SYSTEM SHALL** leave the hint
+    out and keep every other line exactly as it would be without the hint (the notice, the rows and the `8` and `9`
+    lines are never dropped, shortened or moved to make room for it). The hint is never on the main menu, the
+    sign-up screens or any `END` screen. List pages hold the same rows whether or not the hint is shown.
+
+### Negative amounts
+
+53. **WHEN** an amount below zero is written on either channel (for example money in hand after spending more than was
+    sold)
+    **THE SYSTEM SHALL** write the minus sign before the currency symbol, `-R60` and `-KSh1,200.50`, never `R-60`, in
+    every currency, by changing `formatCents` in `src/core/money/format.ts` so that both channels get it.

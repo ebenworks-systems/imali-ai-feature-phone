@@ -71,6 +71,7 @@ export function customerKey(name: string): string {
 export function createSaleRecord(
   shopId: string,
   params: {
+    id?: string; // Optional. Without it a random id is made.
     amount: number;
     item?: string;
     channel: Channel;
@@ -79,7 +80,7 @@ export function createSaleRecord(
   }
 ): SaleRecord {
   return {
-    id: generateRecordId(),
+    id: params.id ?? generateRecordId(),
     shopId,
     kind: 'sale',
     amount: params.amount,
@@ -96,6 +97,7 @@ export function createSaleRecord(
 export function createExpenseRecord(
   shopId: string,
   params: {
+    id?: string; // Optional. Without it a random id is made.
     amount: number;
     item?: string;
     channel: Channel;
@@ -104,7 +106,7 @@ export function createExpenseRecord(
   }
 ): ExpenseRecord {
   return {
-    id: generateRecordId(),
+    id: params.id ?? generateRecordId(),
     shopId,
     kind: 'expense',
     amount: params.amount,
@@ -121,6 +123,7 @@ export function createExpenseRecord(
 export function createDebtRecord(
   shopId: string,
   params: {
+    id?: string; // Optional. Without it a random id is made.
     amount: number;
     customer: string;
     item?: string;
@@ -130,7 +133,7 @@ export function createDebtRecord(
   }
 ): DebtRecord {
   return {
-    id: generateRecordId(),
+    id: params.id ?? generateRecordId(),
     shopId,
     kind: 'debt',
     amount: params.amount,
@@ -149,6 +152,7 @@ export function createDebtRecord(
 export function createPaymentRecord(
   shopId: string,
   params: {
+    id?: string; // Optional. Without it a random id is made.
     amount: number;
     customer: string;
     item?: string;
@@ -158,7 +162,7 @@ export function createPaymentRecord(
   }
 ): PaymentRecord {
   return {
-    id: generateRecordId(),
+    id: params.id ?? generateRecordId(),
     shopId,
     kind: 'payment',
     amount: params.amount,
@@ -186,10 +190,11 @@ export function createReversal(
   record: Record,
   channel: Channel,
   originalWords: string,
-  now: Date
+  now: Date,
+  id?: string
 ): ReversalRecord {
   return {
-    id: generateRecordId(),
+    id: id ?? generateRecordId(),
     shopId: record.shopId,
     kind: 'reversal',
     amount: 0, // Reversals have no amount
