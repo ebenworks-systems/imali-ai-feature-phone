@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the export format for ledger data from the Imali AI feature-phone ledger. When a shop owner upgrades to a smartphone, their ledger history is exported in this standardized JSON format so that Imali AI's WhatsApp business assistant can import the data and continue tracking their finances.
+This document describes the export format for ledger data from the Imali AI feature-phone ledger. When a shop owner upgrades to a smartphone, their ledger history is exported in this standardized JSON format so the owner can take every record to a smartphone app. The format is open and documented in this file.
 
 ## File Format
 
@@ -306,4 +306,4 @@ The current version is `1`. If the format changes in the future:
 
 ## Questions?
 
-This export format is designed for [Imali AI](https://imali.ai), a WhatsApp business assistant for small shop owners. For questions about importing this data, contact Imali AI's development team.
+This is an open format. Anyone may read it or write a reader for it. Imali AI's site is https://imali-ai.ebenworks.co.

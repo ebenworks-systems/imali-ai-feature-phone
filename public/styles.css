@@ -787,7 +787,6 @@ kbd { white-space: nowrap; }
   gap: var(--space-3);
   margin-top: var(--space-6);
 }
-.note { margin-top: var(--space-4); color: var(--ink-soft); font-size: var(--text-xs); }
 
 /* ------------------------------------------------------------------------------------------------------------ */
 /* Footer                                                                                                        */

@@ -349,7 +349,9 @@ integer) and writes its own text from it with `formatMoney`; it never shows the 
 85. IF `localStorage` is not available, THEN THE page SHALL keep the number in memory for the visit and work as
     normal.
 
-86. THE ledger panel SHALL show the line "Everything here is invented demo data." under its buttons.
+86. THE ledger panel SHALL NOT carry a note under its buttons, and no public page or guide SHALL label the demo as
+    invented, fictional or not real (the data itself stays invented; see requirement 97). (Changed by requirement 110:
+    the panel used to show the line "Everything here is invented demo data.")
 
 ### Screen readers and keyboard
 
@@ -478,3 +480,11 @@ against the `server-and-store` and `dialled-menu` specs. The page needs only a o
      status, a network error, a timeout) THE page SHALL behave as it did: show "Could not start the demo shop. Try
      again." once, keep or return to the state it was in, and keep the number of an existing shop on "Start over".
      (Replaces the picking in requirement 79 and the retry in requirement 80.)
+
+110. THE "Try it in one minute" card, step 5, SHALL say "press Export to download every record as a JSON file", and
+     neither the page nor `docs/judges.md` nor `docs/export-format.md` SHALL say that Imali AI can import, imports or
+     will import the file, because no version of Imali AI reads it today. `docs/judges.md` SHALL say the downloaded
+     file holds every record in the format `docs/export-format.md` describes. `docs/export-format.md` SHALL NOT link to
+     `imali.ai`; if it names Imali AI's site, it is `https://imali-ai.ebenworks.co`. THE page SHALL NOT show the note
+     "Everything here is invented demo data." and `docs/judges.md` SHALL NOT call the demo shop's records invented.
+     (Replaces the step 5 wording and the ledger note of requirement 86.)

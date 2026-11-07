@@ -1,7 +1,7 @@
 # Judges' check list: the browser phone
 
 This page draws a working feature phone in your browser and talks to the same handler the real network calls. You do
-not need an African SIM card. Everything on it is invented demo data.
+not need an African SIM card.
 
 The steps below take about ten minutes. Do the 1280 px list on a laptop and the 390 px list on a phone, or in your
 browser's device mode.
@@ -27,7 +27,7 @@ Layout
 - At the bottom of the page: a footer with three lines. "An open-source companion to Imali AI." and "Built with Kiro.
   MIT licence." are links. The middle line, "Imali AI: Africa's smartest AI Business OS.", is plain text.
 
-The one-minute steps. A new demo shop already has invented records, so read each result as a change to the ledger
+The one-minute steps. A new demo shop already has records, so read each result as a change to the ledger
 card, not as a total. Section 6 lists the changes.
 
 1. Press **Start demo shop**. The screen shows the demo number (`+27 00 000 xxxx`), the hint `Dial *384*46254#`, and the
@@ -43,8 +43,8 @@ card, not as a total. Section 6 lists the changes.
    Then send `who owes`. Nothing in the ledger card changes, because asking saves nothing.
 5. Send `undo`. The Owes row is marked undone, a new row "Undo: cancelled Owes R20 Tendai (sugar)" appears at the
    top, and Tendai's total goes back to what it was before step 4. Send `close`: nothing changes. Then press
-   **Export records** in the ledger card. A file named `imali-ai-export-YYYY-MM-DD.json` downloads. This is the file
-   Imali AI can import.
+   **Export records** in the ledger card. A file named `imali-ai-export-YYYY-MM-DD.json` downloads. The file holds every
+   record in the format `docs/export-format.md` describes.
 
 Keyboard
 
@@ -100,8 +100,8 @@ Typing on the pad (the way a feature phone does it)
 
 ## 6. What the ledger card should show after each step
 
-A new demo shop has invented records (a shop called Thandi's Spaza with sales, one expense and people who owe, Tendai,
-Rudo and Sipho among them). They are placed relative to the current time, so the totals differ from run to run.
+A new demo shop already has records (a shop called Thandi's Spaza with sales, one expense and people who owe,
+Tendai, Rudo and Sipho among them). They are placed relative to the current time, so the totals differ from run to run.
 Compare with what you saw just before the step.
 
 | After | Today | Who owes | Last records |
@@ -116,7 +116,7 @@ Compare with what you saw just before the step.
 | Export records | unchanged | unchanged | unchanged; a JSON file downloads |
 
 Nothing you record is ever deleted. "Undo" adds a reversing record, so the old row stays and is marked "undone" in words
-(and struck through), never by colour alone. The one exception is housekeeping of the invented demo data: a demo shop
+(and struck through), never by colour alone. The one exception is housekeeping of the demo data: a demo shop
 and its records are cleared away about a week after it was made, so the demo stays free for the next judge.
 
 ## 7. Start over

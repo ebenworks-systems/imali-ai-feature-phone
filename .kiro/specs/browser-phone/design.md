@@ -86,8 +86,8 @@ total (requirement 104). Each effect is a second sentence in a `span.effect` sho
 | Step 2 | `Dial *384*46254# and press the green key.` |
 | Step 3 | `Press 1 for Sale, type 45, press 1 to skip the item, press 1 to save.` then the effect: `In the ledger card, Sales goes up by R45 and its count by one. A Sale R45 row with channel Menu appears at the top.` |
 | Step 4 | `Open Messages and send Tendai owes 20 sugar, then who owes.` (the two messages are code chips, with no quote marks) then the effect: `Tendai's total owed goes up by R20. An Owes R20 row with channel Text appears at the top.` |
-| Step 5 | `Send undo, then close, and press Export to download the records Imali AI can import.` (`undo` and `close` are code chips) then the effect: `After undo, the Owes row is marked undone, an Undo row appears at the top, and Tendai's total goes back.` |
-| Ledger note | `Everything here is invented demo data.` |
+| Step 5 | `Send undo, then close, and press Export to download every record as a JSON file.` (`undo` and `close` are code chips) then the effect: `After undo, the Owes row is marked undone, an Undo row appears at the top, and Tendai's total goes back.` |
+| Ledger note | none (removed by requirement 110) |
 | Footer line 1 | `An open-source companion to Imali AI.` (the whole line is one link to `https://imali-ai.ebenworks.co`) |
 | Footer line 2 | `Imali AI: Africa's smartest AI Business OS.` (its own line, plain text, no link) |
 | Footer line 3 | `Built with Kiro. MIT licence.` (the whole line is one link to `https://github.com/ebenworks-systems/imali-ai-feature-phone`) |
@@ -704,7 +704,6 @@ section "Last records"  ul: [Sale] R45 bread        Menu   14:05
                             [Sale] R45 bread (struck through) undone
                             Undo: cancelled Sale R45 bread        (one plain sentence, with the time and channel at its right)
 div.actions          [Start demo shop ->] primary   [Start over] quiet   [Export records] quiet
-p.note               "Everything here is invented demo data."
 p#panel-error        "Could not refresh. Try again." [Retry]   (hidden until needed)
 ```
 

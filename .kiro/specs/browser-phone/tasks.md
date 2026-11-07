@@ -169,7 +169,7 @@ tests first, then markup and CSS, then the two DOM files, then docs and checks. 
 - [x] 31. **Ledger panel and footer markup**
   - Files: `public/index.html`
   - Requirements: 16, 69, 76, 84, 86, 98, 100
-  - Double bezel with shop heading, Today, Who owes, Last records, error line with Retry, the three buttons (primary arrow in its own circle), and the note. After `main`, the `footer` with its three lines and two links exactly as in `design.md` Copy (never `imali.ai`).
+  - Double bezel with shop heading, Today, Who owes, Last records, error line with Retry, the three buttons (primary arrow in its own circle). The note under the buttons was removed by task 67. After `main`, the `footer` with its three lines and two links exactly as in `design.md` Copy (never `imali.ai`).
 
 ## Styles
 
@@ -412,3 +412,12 @@ again.") and the `length` field of the ussd and sms answers (the counter never s
     (`test/helpers/ledgerPage.ts`, no new dependency) and checks the body `{}`, one call, the number from the answer, every failure
     above, the busy state and "Start over"; `page-contract.test.ts` runs the same page code against the real app through the
     page's own `createApi` and checks that the number is the server's, that the ledger card fills, and that a 429 is not retried.
+
+- [x] 67. **Wording: the export is not imported yet; no "invented" label on the demo**
+  - Files: `public/index.html`, `public/styles.css`, `docs/judges.md`, `docs/export-format.md`, `.kiro/specs/browser-phone/requirements.md`, `.kiro/specs/browser-phone/design.md`, `.kiro/specs/browser-phone/tasks.md`
+  - Requirements: 86, 110
+  - Step 5 of the steps card now ends "press Export to download every record as a JSON file". `docs/judges.md` step 5 says the
+    file holds every record in the format `docs/export-format.md` describes. `docs/export-format.md` no longer says an app imports
+    the file and no longer links to `imali.ai`; it names `https://imali-ai.ebenworks.co`. The "Everything here is invented demo
+    data." note and its `.note` rule are gone from the page, and `docs/judges.md` no longer calls the demo records invented.
+    The demo data itself stays invented. No test read the old note or step wording, so no test changed.
