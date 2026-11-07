@@ -877,9 +877,11 @@ How they work:
   checks use `toEqual`. The table constraints (requirement 62) are tested only against Postgres in
   `test/store/postgres/constraints.test.ts`, because the memory store has no such rules.
 - **`test/helpers/pg.ts`** exports `createTestDatabase(url)`: it creates a schema named `t_` plus random hex, opens a
-  connection with `connection: { search_path }`, applies every file in `sql/`, and returns
-  `{ sql, schema, drop() }`. `drop()` runs `drop schema ... cascade` and ends the connection. `search_path` as a startup
-  parameter does not work through Neon's pooled connection, so `TEST_DATABASE_URL` must be a direct connection.
+  connection with `connection: { options: '-c search_path=<schema>' }` (the libpq `options` parameter; Neon's proxy
+  drops a bare `search_path` start-up parameter but honours `options`), reads `show search_path` and throws, before any
+  migration or test, unless the answer is exactly the schema (`assertSearchPath`). It then applies every file in
+  `sql/`, and returns `{ sql, schema, drop() }`. `drop()` runs `drop schema ... cascade` and ends the connection.
+  `TEST_DATABASE_URL` must still be a direct connection, and the check is what stops a pooled URL.
 - **Postgres tests** are written as
   `const run = process.env.TEST_DATABASE_URL ? describe : describe.skip;` with the suite name
   `PostgresStore contract (skipped: set TEST_DATABASE_URL to run)` when it is not set, so `vitest --reporter=verbose`

@@ -85,15 +85,20 @@ npx vitest run test/store --reporter=verbose
 Look for `PostgresStore contract (skipped: set TEST_DATABASE_URL to run)`.
 
 To run the Postgres tests too, point `TEST_DATABASE_URL` at a database the tests may use. It must be a **direct**
-connection (not Neon's pooled one), because the tests set a search path when they connect. A local Postgres 14 or later
-works too.
+connection (not Neon's pooled one). A local Postgres 14 or later works too.
 
 ```bash
 TEST_DATABASE_URL='<direct connection string>' npx vitest run test/store
 ```
 
-Each suite makes a schema of its own (named `t_` and random letters), runs inside it, and drops it at the end. It never
+Each suite makes a schema of its own (named `t_` and random hex), runs inside it, and drops it at the end. It never
 reads or changes anything in other schemas.
+
+The suite picks its schema with the libpq `options` start-up parameter (`-c search_path=<schema>`). Neon's proxy drops
+a plain `search_path` start-up parameter but honours `options`, and plain PostgreSQL honours both. Right after
+connecting, the test helper runs `show search_path`. If the answer is not exactly the suite's schema, it stops with an
+error that says so, before it migrates anything or runs a test, and it drops the empty schema it made. That error means
+the URL is a pooled one, or a proxy dropped the option. Use the direct connection string.
 
 ## 4. Neon (the live database)
 

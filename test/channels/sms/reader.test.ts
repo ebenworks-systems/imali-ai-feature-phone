@@ -484,4 +484,49 @@ describe('readIntent', () => {
       });
     });
   });
+  describe('Two numbers with no clear order', () => {
+    it('asks about "sold 45 3 bread" instead of saving R3 with the item "45"', () => {
+      expect(readIntent('sold 45 3 bread', currency)).toEqual({
+        kind: 'ambiguous',
+        base: { kind: 'sale' },
+        options: [
+          { cents: 4500, quantity: 3 },
+          { cents: 300, quantity: 45 }
+        ]
+      });
+    });
+
+    it('asks the same way when the item has several words', () => {
+      expect(readIntent('Sold  45  3 bread and milk', currency)).toEqual({
+        kind: 'ambiguous',
+        base: { kind: 'sale' },
+        options: [
+          { cents: 4500, quantity: 3 },
+          { cents: 300, quantity: 45 }
+        ]
+      });
+    });
+
+    it('never makes a count from a number written with a currency sign or decimals', () => {
+      expect(readIntent('sold R45 3 bread', currency)).toEqual({
+        kind: 'ambiguous',
+        base: { kind: 'sale' },
+        options: [{ cents: 4500, quantity: 3 }, { cents: 300 }]
+      });
+    });
+
+    it('keeps the shapes that have a clear order', () => {
+      expect(readIntent('sold 45 bread', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+      expect(readIntent('sold 45 bread and milk', currency)).toEqual({
+        kind: 'sale', cents: 4500, item: 'bread and milk'
+      });
+      expect(readIntent('sold 3 bread 45', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread', quantity: 3 });
+      expect(readIntent('sold bread 45', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+      expect(readIntent('45 bread', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+      expect(readIntent('3 bread @15', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread', quantity: 3 });
+      expect(readIntent('sold 3 bread at 15', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread', quantity: 3 });
+      expect(readIntent('sold R45 bread', currency)).toEqual({ kind: 'sale', cents: 4500, item: 'bread' });
+      expect(readIntent('sold 2 200', currency)).toMatchObject({ kind: 'ambiguous' });
+    });
+  });
 });

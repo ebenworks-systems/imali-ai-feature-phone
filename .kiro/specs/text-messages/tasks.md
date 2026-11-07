@@ -101,3 +101,5 @@
 ## Fixes
 
 - [x] Read "sold 45 bread" as {sale, 4500 cents, item "bread"} (requirement 51): in the "sold bread 45" pattern of `src/channels/sms/reader.ts`, when no word comes before the amount, the words after it are the item. Tests: "Sale with the amount first and a word after it" in test/channels/sms/reader.test.ts; requirements 1 to 12 tests unchanged and passing.
+
+- [x] Ask about "sold 45 3 bread" (requirement 52): in the "sold bread 45" pattern of `src/channels/sms/reader.ts`, when the only word before the amount is itself an amount and words follow the amount, return an ambiguous intent (`askTwoNumbers`) with both amounts instead of a sale of R3 with the item "45". Tests: "Two numbers with no clear order" in test/channels/sms/reader.test.ts (the three new cases fail on the old reader; the existing shapes are asserted unchanged) and the question and the answer "1" in test/channels/sms/handler.test.ts. Known gap, same as "sold 2 200 bread": the item is not carried through the question, so the saved record has no item.

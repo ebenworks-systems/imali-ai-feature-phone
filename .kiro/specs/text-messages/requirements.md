@@ -105,3 +105,9 @@ Plain text messages (SMS) to record sales, expenses, customer debts, payments, a
 50. Every test checks that every reply is at most 160 characters and contains only ASCII characters.
 
 51. The reader parses "sold 45 bread" (sold, amount, item) and returns {sale, 4500 cents, "bread"} with no quantity, so the example in the help reply (requirement 41) records what it says; "sold 45 bread and milk" keeps "bread and milk" as the item, "sold 45" has no item, and requirements 1 to 12 read as before.
+
+52. When the owner types a sale as two plain numbers and then the item, with no word between the numbers and no
+    amount after the item ("sold 45 3 bread"), the reader returns an ambiguous intent with both amounts, the first
+    number as the money with the second as the count and the other way round (R45 for 3, R3 for 45), the same way
+    "sold 2 200" asks (requirement 27), and never saves R3 with the item "45". A number written with a currency sign
+    or decimals is never offered as a count. Every shape in requirement 51 and requirements 1 to 12 reads as before.

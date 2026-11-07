@@ -394,3 +394,8 @@ routes** are `POST /ussd` and `POST /sms`.
 96. The file `package.json` shall name the package `imali-ai-feature-phone`, set `"private": true`, set
     `"engines": { "node": "22.x" }` so Vercel runs Node 22, and keep `dependencies` to `hono` (on the 4.x line, with
     a `^4` range), `@hono/node-server` and `postgres`; and `.gitignore` shall list `.vercel`.
+
+97. The Postgres test helper shall put each suite's connection in its own schema with the libpq `options` start-up
+    parameter (`-c search_path=<schema>`), and right after connecting shall read `show search_path` and throw a clear
+    error, before any migration or test runs, unless the answer is exactly that schema, so a pooled URL or a proxy
+    that drops the option can never make a suite write into `public`. The production store keeps using `public`.

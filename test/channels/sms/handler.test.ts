@@ -418,6 +418,15 @@ describe('an ambiguous amount', () => {
     expect(records[0]).toMatchObject({ kind: 'sale', amount: 220000, originalWords: 'sold 2 200' });
   });
 
+  it('asks about "sold 45 3 bread" and saves nothing until the owner picks', async () => {
+    const w = world();
+    await w.signUp();
+    expect(await w.text('sold 45 3 bread')).toBe('Did you mean 1) R45 for 3 or 2) R3 for 45? Reply 1 or 2.');
+    expect(await w.records()).toHaveLength(0);
+    expect(await w.text('1')).toBe('Saved: sale R45. Sales today R45. Reply undo to cancel.');
+    expect((await w.records())[0]).toMatchObject({ kind: 'sale', amount: 4500, originalWords: 'sold 45 3 bread' });
+  });
+
   it('asks about an expense in the same way', async () => {
     const w = world();
     await w.signUp();

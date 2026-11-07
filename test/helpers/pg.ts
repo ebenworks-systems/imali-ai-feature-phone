@@ -3,7 +3,12 @@
  *
  * The tests run only when TEST_DATABASE_URL is set. Each suite makes a schema named `t_` plus random hex, applies
  * `sql/` inside it, and drops it at the end, so the tests never read or change data in other schemas.
- * `search_path` is sent as a start-up parameter, so TEST_DATABASE_URL must be a direct connection, not Neon's pooled one.
+ *
+ * The schema is chosen with the libpq `options` start-up parameter (`-c search_path=<schema>`). Neon's proxy drops a
+ * plain `search_path` start-up parameter but honours `options`, and plain PostgreSQL honours both. Right after
+ * connecting, the helper runs `show search_path` and throws if the answer is not exactly the suite's schema, before
+ * any migration or test runs. A pooled URL, or any proxy that drops the option, therefore stops the suite with a
+ * clear error and can never write into `public`.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -24,6 +29,30 @@ export interface TestDatabase {
   drop(): Promise<void>;
 }
 
+/** The start-up parameters that put a connection in `schema` (hex names only, so safe to put in the option). */
+export function schemaConnection(schema: string): { options: string } {
+  return { options: `-c search_path=${schema}` };
+}
+
+/**
+ * Throws unless the connection's `search_path` is exactly `schema`. The error names the schema and what the
+ * server answered, and says what to check.
+ */
+export async function assertSearchPath(
+  sql: { unsafe(query: string): PromiseLike<ReadonlyArray<Record<string, unknown>>> },
+  schema: string
+): Promise<void> {
+  const rows = await sql.unsafe('show search_path');
+  const actual = rows[0]?.search_path;
+  if (actual !== schema) {
+    throw new Error(
+      `The test connection is not in its own schema: expected search_path "${schema}" but the server says ` +
+        `${JSON.stringify(actual ?? null)}. Nothing was migrated or run. TEST_DATABASE_URL must be a direct ` +
+        `connection (not Neon's pooled one) to a server that honours the "options" start-up parameter.`
+    );
+  }
+}
+
 /** Names the missing variable once, so a skipped suite tells the reader how to run it. */
 export const SKIP_NOTE = 'skipped: set TEST_DATABASE_URL to run';
 
@@ -40,10 +69,16 @@ export async function createTestDatabase(url: string, options: { migrate?: boole
     max: 3,
     prepare: false,
     onnotice: () => {},
-    connection: { search_path: schema }
+    connection: schemaConnection(schema)
   });
-  if (options.migrate !== false) {
-    await applyMigrations(sql, SQL_DIR);
+  try {
+    await assertSearchPath(sql, schema);
+    if (options.migrate !== false) {
+      await applyMigrations(sql, SQL_DIR);
+    }
+  } catch (error) {
+    await dropSchema(url, schema, sql);
+    throw error;
   }
 
   return {
@@ -53,15 +88,20 @@ export async function createTestDatabase(url: string, options: { migrate?: boole
       await sql.unsafe('truncate records, shops, pending_questions, processed_texts restart identity cascade');
     },
     async drop() {
-      await sql.end({ timeout: 5 });
-      const cleaner = postgres(url, { max: 1, prepare: false, onnotice: () => {} });
-      try {
-        await cleaner.unsafe(`drop schema if exists ${schema} cascade`);
-      } finally {
-        await cleaner.end({ timeout: 5 });
-      }
+      await dropSchema(url, schema, sql);
     }
   };
+}
+
+/** Closes the suite's connection, then drops its schema from a separate connection. */
+async function dropSchema(url: string, schema: string, sql: Sql): Promise<void> {
+  await sql.end({ timeout: 5 });
+  const cleaner = postgres(url, { max: 1, prepare: false, onnotice: () => {} });
+  try {
+    await cleaner.unsafe(`drop schema if exists ${schema} cascade`);
+  } finally {
+    await cleaner.end({ timeout: 5 });
+  }
 }
 
 /**

@@ -95,6 +95,31 @@ function wordsPreserveCase(text: string): string[] {
 // ============================================================================
 
 /**
+ * Two numbers with no clear order, such as "sold 45 3 bread": either the first is the money and the second is
+ * how many (R45 for 3), or the other way round (R3 for 45). A count must be a plain whole number, so a number
+ * written "R45" or "45.50" never becomes a count.
+ */
+function askTwoNumbers(
+  firstText: string,
+  secondText: string,
+  firstCents: number,
+  secondCents: number
+): AmbiguousIntent {
+  const asCount = (text: string): { quantity?: number } => {
+    const count = /^\d+$/.test(text) ? Number(text) : 0;
+    return Number.isSafeInteger(count) && count > 0 ? { quantity: count } : {};
+  };
+  return {
+    kind: 'ambiguous',
+    options: [
+      { cents: firstCents, ...asCount(secondText) },
+      { cents: secondCents, ...asCount(firstText) }
+    ],
+    base: { kind: 'sale' }
+  };
+}
+
+/**
  * Try to parse a sale intent from the message.
  * Patterns:
  * 1. "sold 3 bread 45" -> {quantity, item, amount}
@@ -227,6 +252,14 @@ function trySale(text: string, currency: Currency): SaleIntent | AmbiguousIntent
       const amountText = wPreserve[i]; // Use preserved case for parseAmount
       const result = parseAmount(amountText, currency);
       if (result.type === 'success') {
+        // "sold 45 3 bread": two numbers in a row, then the item. Which one is the money and which one is
+        // the count? Nothing says, so ask instead of saving R3 with the item "45".
+        if (i === 2 && i < w.length - 1) {
+          const first = parseAmount(wPreserve[1], currency);
+          if (first.type === 'success') {
+            return askTwoNumbers(wPreserve[1], wPreserve[2], first.amount.cents, result.amount.cents);
+          }
+        }
         // "sold bread 45": the item is before the amount.
         // "sold 45 bread": nothing before the amount, so the words after it are the item.
         const itemPart = i > 1 ? w.slice(1, i).join(' ') : w.slice(i + 1).join(' '); // normalized (lowercase)

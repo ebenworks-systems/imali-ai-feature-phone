@@ -124,7 +124,7 @@ that person has done them.
   - Requirements: 54, 55, 56, 51, 60, 61, 63, 53
 
 - [x] 3.6 **Run the contract against Postgres.** `createTestDatabase(url)` in the test helper (throwaway schema,
-  `connection: { search_path }`, applies `sql/` through `applyMigrations`, `drop()`); `postgres/store.test.ts` calls
+  `connection: { options: '-c search_path=<schema>' }`, applies `sql/` through `applyMigrations`, `drop()`); `postgres/store.test.ts` calls
   `runLedgerStoreContract` with a harness that truncates the four tables and returns the store. When
   TEST_DATABASE_URL is not set, use `describe.skip` with the name
   `PostgresStore contract (skipped: set TEST_DATABASE_URL to run)`.
@@ -423,3 +423,15 @@ the fixed clock, and replace the two handlers with `vi.mock` so they check exact
   `*384*46254#` in the Africa's Talking simulator and send a text to `46254`.
   - Files: none
   - Requirements: 5, 12, 80, 82
+
+## 10. Fixes
+
+- [x] 10.1 **Keep the Postgres suites out of `public` on Neon.** Neon's proxy drops the `search_path` start-up
+  parameter, so `show search_path` gave `"$user", public`, migrations looked applied and parallel suites raced on
+  `create table`. `test/helpers/pg.ts` now sends `connection: { options: '-c search_path=<schema>' }`, and
+  `assertSearchPath` reads `show search_path` right after connecting and throws, before any migration, unless it is
+  exactly the suite's schema (the helper then drops the empty schema it made). The helper comment and
+  `docs/run-the-demo.md` say so. `src/store/postgres` is unchanged. Tests: `test/helpers/pg.test.ts` (fake
+  `postgres`, no database needed; fails on the old helper). The Postgres suites themselves still need task 9.3.
+  - Files: `test/helpers/pg.ts`, `test/helpers/pg.test.ts`, `docs/run-the-demo.md`
+  - Requirements: 97, 77
