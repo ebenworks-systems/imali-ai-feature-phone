@@ -59,6 +59,11 @@ export function readConfig(env: Env): ServerConfig {
     warnings.push('AT_CALLBACK_KEY is not set, so /ussd and /sms answer 503 until it is (the browser phone still works)');
   }
   if (onVercel && !databaseUrl) warnings.push('DATABASE_URL is not set, so records are not kept between calls');
+  // The built-in salt is in the public repository, so on the live site anyone who can read the demo_quota table could
+  // hash every IPv4 address and recover the addresses. A local run keeps the default without a warning.
+  if (onVercel && !addressSalt) {
+    warnings.push('ADDRESS_SALT is not set, so stored address hashes use the public default salt');
+  }
 
   return {
     ...(databaseUrl ? { databaseUrl } : {}),

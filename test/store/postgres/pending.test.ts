@@ -79,6 +79,18 @@ describePostgres('PostgresPendingStore', (db) => {
     await expect(store.clear(PHONE_B)).resolves.toBeUndefined();
   });
 
+  it('clears the questions of many phones in one call, and an empty list does nothing', async () => {
+    await store.set(PHONE_A, ambiguous);
+    await store.set(PHONE_B, large);
+    await store.set('+27000000003', signup);
+    await store.clearMany([PHONE_A, '+27000000003', '+27000000009']);
+    expect(await store.get(PHONE_A)).toBeNull();
+    expect(await store.get('+27000000003')).toBeNull();
+    expect(await store.get(PHONE_B)).toEqual(large);
+    await expect(store.clearMany([])).resolves.toBeUndefined();
+    expect(await store.get(PHONE_B)).toEqual(large);
+  });
+
   it('keeps a question at 9 minutes and at exactly 10, and drops it at 11', async () => {
     await store.set(PHONE_A, ambiguous);
     clock.now = new Date(START.getTime() + 9 * MINUTE);

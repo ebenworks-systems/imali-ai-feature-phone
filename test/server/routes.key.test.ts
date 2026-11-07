@@ -9,8 +9,8 @@ vi.mock('../../src/channels/index.js', () => ({
 import { handleText, handleUssd } from '../../src/channels/index.js';
 
 const KEY = 'test-callback-key-not-real';
-const ussd = { sessionId: 'S1', serviceCode: '*384*46254#', phoneNumber: '+27000001234', text: '' };
-const sms = { from: '+27000001234', text: 'today', id: 'ATXid_1' };
+const ussd = { sessionId: 'S1', serviceCode: '*384*46254#', phoneNumber: '+254711000034', text: '' };
+const sms = { from: '+254711000034', text: 'today', id: 'ATXid_1' };
 
 beforeEach(() => {
   vi.mocked(handleUssd).mockClear();
@@ -72,9 +72,9 @@ describe('with AT_CALLBACK_KEY set', () => {
 
   it('answers 403 before the body is read: a 9 KB body without the key gets 403, not 413', async () => {
     const { app } = lockedApp(KEY);
-    const res = await postForm(app, '/sms', { from: '+27000001234', text: 'x'.repeat(9000) });
+    const res = await postForm(app, '/sms', { from: '+254711000034', text: 'x'.repeat(9000) });
     expect(res.status).toBe(403);
-    const withKey = await postForm(app, `/sms?k=${KEY}`, { from: '+27000001234', text: 'x'.repeat(9000) });
+    const withKey = await postForm(app, `/sms?k=${KEY}`, { from: '+254711000034', text: 'x'.repeat(9000) });
     expect(withKey.status).toBe(413);
   });
 

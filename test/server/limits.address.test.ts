@@ -70,6 +70,34 @@ describe('every browser route also counts against the client address: 120 a minu
     expect((await ledger(app, phoneN(2), { 'x-real-ip': '192.0.2.2' })).status).toBe(404);
   });
 
+  it('counts every address in one IPv6 /64 as one client, and a different /64 apart', async () => {
+    const { app } = makeApp({ limits: { browserPerAddress: 3 } });
+    const inSameBlock = (n: number) => `2001:db8:1:2:${n.toString(16)}:aaaa:bbbb:cccc`;
+    for (let i = 0; i < 3; i += 1) {
+      expect((await ledger(app, phoneN(i), { 'x-real-ip': inSameBlock(i) })).status).toBe(404);
+    }
+    // A new address every time, but the same /64: the fourth request meets the limit.
+    expect((await ledger(app, phoneN(9), { 'x-real-ip': inSameBlock(99) })).status).toBe(429);
+    expect((await ledger(app, phoneN(9), { 'x-forwarded-for': `1.1.1.1, ${inSameBlock(100)}` })).status).toBe(429);
+    // Another /64 has its own count.
+    expect((await ledger(app, phoneN(9), { 'x-real-ip': '2001:db8:1:3::1' })).status).toBe(404);
+  });
+
+  it('counts an IPv4-mapped IPv6 address with the IPv4 address', async () => {
+    const { app } = makeApp({ limits: { browserPerAddress: 1 } });
+    expect((await ledger(app, phoneN(1), { 'x-real-ip': '192.0.2.9' })).status).toBe(404);
+    expect((await ledger(app, phoneN(2), { 'x-real-ip': '::ffff:192.0.2.9' })).status).toBe(429);
+  });
+
+  it('counts the IPv6 /64 as one client on the Africa\'s Talking address limit as well', async () => {
+    const { app } = makeApp({ limits: { atPerAddress: 2 } });
+    const send = (n: number) =>
+      postForm(app, '/sms', { from: '+254711000000', text: 'today' }, { 'x-real-ip': `2001:db8:1:2:${n}::1` });
+    expect((await send(1)).status).toBe(200);
+    expect((await send(2)).status).toBe(200);
+    expect((await send(3)).status).toBe(429);
+  });
+
   it('takes the address from x-real-ip, then the last x-forwarded-for entry: a made-up front changes nothing', async () => {
     const { app } = makeApp({ limits: { browserPerAddress: 1 } });
     expect((await ledger(app, phoneN(1), { 'x-forwarded-for': '1.1.1.1, 203.0.113.7' })).status).toBe(404);
@@ -119,6 +147,13 @@ describe('the demo-shop limits are kept in the store, so every instance counts a
     const refused = await post(a, {});
     expect(refused.status).toBe(429);
     expect(refused.headers.get('retry-after')).toMatch(/^\d+$/);
+  });
+
+  it('holds the 10 an hour for a client that sends every call from a new address in its /64', async () => {
+    const { a } = twoInstances();
+    for (let i = 0; i < 10; i += 1) expect((await post(a, {}, `2001:db8:1:2:${i}::${i + 1}`)).status).toBe(201);
+    expect((await post(a, {}, '2001:db8:1:2:ffff::1')).status).toBe(429);
+    expect((await post(a, {}, '2001:db8:1:3::1')).status).toBe(201);
   });
 
   it('holds the daily ceiling across instances, counting shops that were made (not refused or 409 calls)', async () => {
@@ -202,6 +237,19 @@ describe('the address is kept only as a salted SHA-256 hash', () => {
     expect(first).toBe(addressKey(ADDRESSES[0]!, DEFAULT_ADDRESS_SALT));
     const [blank] = await keysFor('   ');
     expect(blank).toBe(first);
+  });
+
+  it('hashes the /64 of an IPv6 address, so every address in it has the same key and the quota counts one client', async () => {
+    const a = await keysFor(undefined, { 'x-real-ip': '2001:db8:1:2:aaaa:bbbb:cccc:dddd' });
+    const b = await keysFor(undefined, { 'x-real-ip': '2001:db8:1:2:1:2:3:4' });
+    const other = await keysFor(undefined, { 'x-real-ip': '2001:db8:1:3:1:2:3:4' });
+    expect(a).toEqual(b);
+    expect(a).toEqual([addressKey('2001:db8:1:2', DEFAULT_ADDRESS_SALT)]);
+    expect(other).not.toEqual(a);
+    // The mapped form is hashed as the IPv4 address.
+    expect(await keysFor(undefined, { 'x-real-ip': '::ffff:203.0.113.7' })).toEqual([
+      addressKey('203.0.113.7', DEFAULT_ADDRESS_SALT)
+    ]);
   });
 
   it('keeps two addresses apart', () => {

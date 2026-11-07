@@ -10,7 +10,8 @@
  * - AT_USERNAME and AT_API_KEY set but AT_CALLBACK_KEY not: POST /ussd and POST /sms answer 503 (the start line says
  *   `callback=missing-key`); the server still starts and the browser routes work. No sender: they stay open.
  * - ADDRESS_SALT set: the salt client addresses are hashed with before the demo limits are kept. Not set: a fixed
- *   built-in salt (the start line says `salt=default`), the same in every instance.
+ *   built-in salt (the start line says `salt=default`), the same in every instance. The built-in salt is public, so on
+ *   Vercel (VERCEL set) a missing ADDRESS_SALT also gives a start-up warning; a local run has none.
  */
 
 import { GeminiReader, type ModelReader } from '../ai/reader.js';

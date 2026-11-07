@@ -85,6 +85,82 @@ describe('clientAddress', () => {
 
   it('cuts a very long value, so a header cannot be used to fill memory', () => {
     expect(clientAddress(headers({ 'x-real-ip': 'a'.repeat(500) }))).toHaveLength(64);
+    expect(clientAddress(headers({ 'x-real-ip': `2001:db8::${'1:'.repeat(300)}` })).length).toBeLessThanOrEqual(64);
+  });
+
+  describe('IPv6', () => {
+    const real = (address: string) => clientAddress(headers({ 'x-real-ip': address }));
+
+    it('counts two addresses in one /64 as one client', () => {
+      expect(real('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe(real('2001:db8:1:2:1111:2222:3333:4444'));
+      expect(real('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe('2001:db8:1:2');
+    });
+
+    it('counts two addresses in different /64s apart', () => {
+      expect(real('2001:db8:1:2::1')).not.toBe(real('2001:db8:1:3::1'));
+      expect(real('2001:db8:1:2::1')).not.toBe(real('2001:db8:2:2::1'));
+      expect(real('2001:db8:1:2::1')).not.toBe(real('2001:db9:1:2::1'));
+    });
+
+    it('expands "::" first, so the four groups are the real ones', () => {
+      // `2001:db8::1` is 2001:db8:0:0:0:0:0:1, whose /64 is 2001:db8:0:0, not 2001:db8:1.
+      expect(real('2001:db8::1')).toBe('2001:db8:0:0');
+      expect(real('2001:db8::1')).toBe(real('2001:0db8:0000:0000:ffff:0:0:2'));
+      expect(real('2001:db8:1:2:3::')).toBe('2001:db8:1:2');
+      expect(real('2001::')).toBe('2001:0:0:0');
+      expect(real('::')).toBe('0:0:0:0');
+      expect(real('::1')).toBe('0:0:0:0');
+      expect(real('1:2::3:4:5')).toBe('1:2:0:0'); // 1:2:0:0:0:3:4:5
+      expect(real('1::2:3:4:5:6:7')).toBe('1:0:2:3'); // 1:0:2:3:4:5:6:7
+    });
+
+    it('ignores case, leading zeros, brackets, a port and a zone', () => {
+      const expected = '2001:db8:1:2';
+      expect(real('2001:DB8:0001:0002::5')).toBe(expected);
+      expect(real('[2001:db8:1:2::5]')).toBe(expected);
+      expect(real('[2001:db8:1:2::5]:443')).toBe(expected);
+      expect(real('fe80::1%eth0')).toBe('fe80:0:0:0');
+    });
+
+    it('counts an IPv4-mapped IPv6 address as the IPv4 address', () => {
+      expect(real('::ffff:192.0.2.1')).toBe('192.0.2.1');
+      expect(real('::FFFF:192.0.2.1')).toBe('192.0.2.1');
+      expect(real('0:0:0:0:0:ffff:192.0.2.1')).toBe('192.0.2.1');
+      expect(real('::ffff:c000:201')).toBe('192.0.2.1'); // the same address in hexadecimal groups
+      expect(real('::ffff:192.0.2.1')).toBe(real('192.0.2.1'));
+      expect(real('::ffff:192.0.2.1')).not.toBe(real('::ffff:192.0.2.2'));
+    });
+
+    it('does not take another address with the ffff group for a mapped one', () => {
+      expect(real('1::ffff:192.0.2.1')).toBe('1:0:0:0');
+      expect(real('::fffe:192.0.2.1')).toBe('0:0:0:0');
+    });
+
+    it('works for the x-forwarded-for fallback too', () => {
+      const a = clientAddress(headers({ 'x-forwarded-for': '1.1.1.1, 2001:db8:1:2:a:b:c:d' }));
+      const b = clientAddress(headers({ 'x-forwarded-for': '9.9.9.9, 2001:db8:1:2:e:f:0:1' }));
+      expect(a).toBe('2001:db8:1:2');
+      expect(b).toBe(a);
+    });
+
+    it('counts text with a ":" that is not an IPv6 address under the shared key, so writing a new string gains nothing', () => {
+      for (const text of ['1:2:3', 'zzzz::1', '1::2::3', '1:2:3:4:5:6:7:8:9', '12345::1', '::ffff:999.0.0.1', ':::']) {
+        expect(real(text), text).toBe('unknown');
+      }
+    });
+  });
+
+  describe('IPv4', () => {
+    const real = (address: string) => clientAddress(headers({ 'x-real-ip': address }));
+
+    it('stays as it is', () => {
+      expect(real('203.0.113.7')).toBe('203.0.113.7');
+      expect(real('198.51.100.2')).toBe('198.51.100.2');
+    });
+
+    it('drops a port, which some proxies add', () => {
+      expect(real('203.0.113.7:51234')).toBe('203.0.113.7');
+    });
   });
 });
 

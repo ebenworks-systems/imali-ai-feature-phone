@@ -458,14 +458,16 @@ of them replaces a sentence above, the sentence says so.
      in SQL, delete their `pending_questions` rows, delete their `records` rows by `shop_id` in one statement (the
      foreign keys between a shop's own records are checked at the end of the statement), then delete the shops with the
      demo test repeated. The memory store shall do the same to its own maps. The memory pending store is a separate
-     object, so the app clears the waiting question of each phone number the store gives back.
+     object, so the app clears the waiting questions of the phone numbers the store gives back with one call
+     (requirement 120).
 
 105. When `POST /api/phone/demo` has passed its limit on the client address and its body and phone checks, the app shall
-     call `deleteExpiredDemoShops` with now minus 7 days and at most 200 shops, before it checks the daily ceiling and
+     call `deleteExpiredDemoShops` with now minus 7 days and at most 50 shops (200 before requirement 120), before it checks the daily ceiling and
      the cap of 5,000, so the cap frees itself over the judging weeks. If the housekeeping fails, the app shall log the
      error and carry on with the call. No other route shall call it, and no other code shall delete a shop or a record
-     (a test scans the source for that). A demo shop's `createdAt` is the time of its oldest invented record, two days
-     before it is made, so a demo shop lives about 5 days after it is made.
+     (a test scans the source for that). (Requirement 121 replaces the next sentence of the first version: a demo shop's
+     `createdAt` was the time of its oldest invented record, two days before it was made, so a shop lived about 5 days.
+     It is now the time the shop is made.)
 
 #### Limits per client address
 
@@ -536,3 +538,73 @@ of them replaces a sentence above, the sentence says so.
 117. A test through `POST /ussd` with two phone numbers and one session id (the client chooses the session id, and the
      shop id is made from it) shall show that the second phone gets the plain sorry screen, not the first phone's menu,
      and that no shop is made for it (requirement 54 of the `dialled-menu` spec).
+
+### Fixes after the second review's fixes were read again
+
+A second round of review read the fixes above and found seven more faults; each was confirmed. Requirements 118 to 125
+close them. The seventh item, the page (requirement 109 of the `browser-phone` spec), is not repeated here.
+
+#### The Africa's Talking routes do not make demo shops
+
+118. If `POST /ussd` or `POST /sms` receives a number in the demo range (`+2700000` and four digits, after the number
+     is normalised) that has no shop, then the app shall make no shop and write nothing (no shop, no record, no waiting
+     question, no claim on the text's `id`), shall call no handler, and shall answer: `/ussd` 200 `text/plain` `END `
+     followed by `No demo shop for this number. Start a demo first.`; `/sms` 200 `text/plain` with that sentence as the
+     body and no text sent (a demo number is never sent one). This shall hold with no callback key (a local run, where
+     both routes are open) and with the key set and given; with the key wrong or missing, requirement 82 still gives 403
+     first. The check comes after the checks of shape and length and before the claim and the handler. Where the
+     demo number has a shop, the handlers may serve it, with the store the browser routes use (`createShop` throws
+     `ShopCreationNotAllowedError`), so that a shop cleared away between the check and the handler's own look is not
+     made again. A number that is not a demo number is handled as before. Only `POST /api/phone/demo` makes demo shops.
+     Before this, with no `AT_USERNAME` and `AT_API_KEY` the routes were open and passed the store that lets demo numbers
+     through `withShopLimit`; four posts to `/ussd` (`text` "", "1", "1*Rudo Shop", "1*Rudo Shop*1") made a shop on
+     `+27000009876`, and `POST /api/phone/ussd` then served it, past the limit per address and the cap of 5,000.
+     (Amends requirements 14 and 18, which say the handler is called for every call, and 84, which says the routes accept every request with no key: a call for a demo number with no shop is still answered, but not by a handler.)
+
+#### Limits per client address, for IPv6
+
+119. The client address used as the key of every per-address limit (requirements 93, 106 and 114) and hashed for the
+     quota store (requirement 108) shall be, for an address that contains `:`, its first four groups (its /64) after
+     `::` is expanded, so that the four groups are the real ones. Two addresses in one /64 shall count as one client and
+     two addresses in different /64s shall count apart. An IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) shall count as
+     the IPv4 address `a.b.c.d`. An IPv4 address shall stay as it is. A value with a `:` that is not an IPv6 address
+     shall count under the shared key `unknown`. Before this each IPv6 address was counted on its own, so a client with
+     a /64 could send every request from a new address and never meet 10 an hour or 120 a minute.
+
+#### The housekeeping on the request path
+
+120. The housekeeping shall remove at most 50 demo shops on a call to `POST /api/phone/demo` (it was 200), and shall
+     clear the waiting questions of the shops it removed with one call, `PendingStore.clearMany(phones)`, never one call
+     for each shop, and no call at all when it removed none. Before this the route made up to 200 calls in a row on the
+     request path, although the Postgres store had already deleted those questions in the same transaction.
+     (Amends requirements 104 and 105.)
+
+121. A demo shop's `createdAt` shall be the time the shop is made. The invented records keep their own earlier times (the
+     oldest is 1.6 to 2.6 days before). So a shop made now survives a housekeeping run 6 days later and is removed by
+     the first run after 7 days. Nothing else reads a demo shop's `createdAt` as the time of its first record.
+     Before this the shop was removed 4.4 to 5.4 days after a judge made it. (Replaces a sentence of requirement 105.)
+
+#### Start-up and deploy
+
+122. Where VERCEL is set and ADDRESS_SALT is not (blank counts as not set), the start-up shall add the warning `ADDRESS_SALT
+     is not set, so stored address hashes use the public default salt`, printed once at cold start with the other
+     warnings, and the server shall still start. A local run (VERCEL not set) keeps the built-in salt without a warning.
+     The warning never holds a value. The built-in salt is in this public repository, so with it anyone who can read
+     `demo_quota` can recover IPv4 addresses by hashing every address. (Adds to requirement 107.)
+
+123. `docs/run-the-demo.md` shall say plainly that nothing runs migrations when a deploy happens, and that every deploy
+     that adds a file in `sql/` needs `npm run db:migrate` against the direct (unpooled) connection string before that
+     deployment is promoted, because code that needs a new table answers 500 until it has run. The document shall also
+     describe the behaviour of requirements 118 to 122.
+
+#### Tests
+
+124. Each of requirements 118 to 122 shall have a test that fails on the code as it was before and passes now:
+     `test/server/routes.demonumbers.test.ts` (118, with the real handlers, with and without the key, for `/ussd` and
+     `/sms`), `phone.test.ts` and `limits.address.test.ts` (119), `housekeeping.test.ts` (120 and 121, with a pending
+     store that counts calls and the Postgres pending class on a fake `sql`), `demo.test.ts` (121), and `config.test.ts`,
+     `bootstrap.test.ts` and `vercel.test.ts` (122). `PendingStore.clearMany` is tested in
+     `test/channels/sms/pending.test.ts` and, with a database, in `test/store/postgres/pending.test.ts`.
+
+125. Existing route tests that used a demo number as a plain Africa's Talking caller with a mocked handler now use a
+     number that is not a demo number, and the test that shows no text is sent to a demo number uses a demo shop.

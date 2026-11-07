@@ -323,13 +323,13 @@ integer) and writes its own text from it with `formatMoney`; it never shows the 
 
 ### Demo shop buttons
 
-79. WHEN the owner presses "Start demo shop", THE page SHALL make a random number `+2700000xxxx` using
-    `crypto.getRandomValues`, call `POST /api/phone/demo` with it, show the button as busy, and on success keep the
-    number in `localStorage` and show the home screen.
+79. WHEN the owner presses "Start demo shop", THE page SHALL call `POST /api/phone/demo` with the empty object `{}` (it
+    names no number), show the button as busy, and on success keep the number from the 201 answer in `localStorage`
+    and show the home screen. (Changed by requirement 109: the page used to make a random number itself.)
 
-80. IF the demo route says the number is taken (HTTP 409), THEN THE page SHALL try a new number, up to three tries
-    in all. IF it still fails, THEN THE page SHALL show "Could not start the demo shop. Try again." and keep the
-    first-visit state.
+80. IF the demo route fails for any reason (429, 503, another status, a network error, a timeout, or a 201 answer with no
+    demo number in it), THEN THE page SHALL make one call only, show "Could not start the demo shop. Try again." and keep
+    the first-visit state. (Changed by requirement 109: the page used to try a new number on a 409, up to three tries.)
 
 81. WHEN the page loads with a stored number, THE page SHALL call `GET /api/ledger` for it. IF the answer is 404,
     THEN THE page SHALL forget the number and show the first-visit state. IF the call fails for another reason, THEN
@@ -444,7 +444,8 @@ against the `server-and-store` and `dialled-menu` specs. The page needs only a o
 - **A1.** `GET /api/ledger` returns the top-level keys `shop`, `today`, `owes` and `records` (confirmed by the contract
   test), and answers 404 for a number with no shop. `shop.timeZone` is always sent; if it is missing or unknown the
   page uses `Africa/Johannesburg`.
-- **A2.** `POST /api/phone/demo` answers 2xx on success and 409 when the number is already a shop.
+- **A2.** `POST /api/phone/demo` answers 2xx on success, with the number it chose in `phone` (the server tries up to 20
+  free numbers), and 409 only when a number is asked for and is already a shop. The page asks for none.
 - **A3.** The dialled menu works out `0` (back one screen) and `00` (main menu) from the raw path, as the network
   would send it, because only the server knows its screens.
 - **A4.** A non-2xx answer from the ussd or sms route carries nothing the owner should see, so the page shows its own
@@ -467,3 +468,13 @@ against the `server-and-store` and `dialled-menu` specs. The page needs only a o
      for the ring against the page. It SHALL NOT be filled with `--ink` or any dark colour: the design rule is no dark
      filled area of any size (requirement 3 and the primary button, task 63). The token `--on-ink` SHALL be removed with
      its last user.
+
+### Added after the second round of review
+
+109. WHEN the owner presses "Start demo shop" or "Start over", THE page SHALL post `{}` to `/api/phone/demo` and take the
+     number from the `phone` field of the 201 answer, checking it with `isDemoPhone`. THE page SHALL NOT make a number
+     of its own and SHALL NOT retry: the server already tries up to 20 free numbers, and each try the page made on a 409
+     spent one of the 10 demo calls an hour allowed to the visitor's address. For every other answer (429, 503, any other
+     status, a network error, a timeout) THE page SHALL behave as it did: show "Could not start the demo shop. Try
+     again." once, keep or return to the state it was in, and keep the number of an existing shop on "Start over".
+     (Replaces the picking in requirement 79 and the retry in requirement 80.)

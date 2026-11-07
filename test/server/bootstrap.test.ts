@@ -269,7 +269,22 @@ describe('VERCEL', () => {
   });
 
   it('adds no such warning when DATABASE_URL is set', () => {
-    expect(createAppFromEnv({ VERCEL: '1', DATABASE_URL: 'x' }).warnings).toEqual([]);
+    expect(createAppFromEnv({ VERCEL: '1', DATABASE_URL: 'x', ADDRESS_SALT: 'x' }).warnings).toEqual([]);
+  });
+
+  it('warns that the public default salt is used when ADDRESS_SALT is not set, and still starts', async () => {
+    const started = createAppFromEnv({ VERCEL: '1', DATABASE_URL: 'x' });
+    expect(started.warnings).toEqual(['ADDRESS_SALT is not set, so stored address hashes use the public default salt']);
+    expect(started.summary).toContain('salt=default');
+    expect((await started.app.request('/health')).status).toBe(200);
+  });
+
+  it('has no such warning when ADDRESS_SALT is set, and none on a local run', () => {
+    const set = createAppFromEnv({ VERCEL: '1', DATABASE_URL: 'x', ADDRESS_SALT: 'a-long-random-salt' });
+    expect(set.warnings).toEqual([]);
+    expect(set.summary).toContain('salt=set');
+    expect(createAppFromEnv({}).warnings).toEqual([]);
+    expect(createAppFromEnv({ ADDRESS_SALT: '' }).warnings).toEqual([]);
   });
 });
 

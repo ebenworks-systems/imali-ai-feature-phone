@@ -20,11 +20,20 @@ describe('buildDemoShop', () => {
     expect(DEMO_SHOP_NAME.length).toBeLessThanOrEqual(24);
   });
 
-  it('is created at the time of the oldest record', () => {
+  it('is created at the time it is made, not at the time of its oldest record', () => {
     const now = local('12:00');
     const shop = buildDemoShop(PHONE, now);
     const records = buildDemoRecords(shop, now);
-    expect(shop.createdAt).toBe(records[0]!.createdAt);
+    expect(shop.createdAt).toBe(now.toISOString());
+    // The invented records keep their own, earlier times: the oldest is 1.6 to 2.6 days before the shop.
+    const oldest = Date.parse(records[0]!.createdAt);
+    expect(now.getTime() - oldest).toBeGreaterThan(1.5 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(shop.createdAt)).toBeGreaterThan(oldest);
+  });
+
+  it.each(['00:05', '08:00', '12:00', '23:59'])('is created at now when it is %s', (hhmm) => {
+    const at = local(hhmm);
+    expect(buildDemoShop(PHONE, at).createdAt).toBe(at.toISOString());
   });
 });
 

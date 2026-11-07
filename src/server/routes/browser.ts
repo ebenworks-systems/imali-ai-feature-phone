@@ -78,8 +78,8 @@ function badBody(c: C): Response {
 }
 
 /**
- * Housekeeping of invented demo data: removes the demo shops made more than 7 days ago (at most 200 a call), with their
- * records and waiting questions, so the cap on demo shops frees itself. The store decides what a demo shop is, so
+ * Housekeeping of invented demo data: removes the demo shops made more than 7 days ago, with their
+ * records and waiting questions (at most 50 a call), so the cap on demo shops frees itself. The store decides what a demo shop is, so
  * this can never remove a shop on another number, and it never removes a single record. A failure is logged and does
  * not stop the call: the housekeeping is not what the caller asked for.
  */
@@ -87,8 +87,9 @@ async function sweepOldDemoShops(ctx: AppContext): Promise<void> {
   try {
     const cutoff = new Date(ctx.now().getTime() - DEMO_SHOP_MAX_AGE_MS);
     const phones = await ctx.store.deleteExpiredDemoShops(cutoff, DEMO_SWEEP_PER_CALL);
-    // The store removes the questions it keeps itself (Postgres); the memory pending store is a separate object.
-    for (const phone of phones) await ctx.pending.clear(phone);
+    // The Postgres store removes the questions in the same transaction as the shops; the memory pending store is a
+    // separate object. One call for all the phones, never one call for each shop, because this is on the request path.
+    if (phones.length > 0) await ctx.pending.clearMany(phones);
   } catch (error) {
     logError('/api/phone/demo sweep', error);
   }

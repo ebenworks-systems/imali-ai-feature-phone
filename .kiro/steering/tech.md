@@ -51,6 +51,10 @@ When `AT_CALLBACK_KEY` is set, `POST /ussd` and `POST /sms` need the query param
 When the Africa's Talking sender is set (`AT_USERNAME` and `AT_API_KEY`) and the key is not, both answer 503. With no
 sender (a local run) they stay open. Every browser route is limited per client address as well as per phone number.
 A repeated `/sms` callback (same `id`) gets the first reply and is not handled again.
+`/ussd` and `/sms` never make a shop on a demo number: a demo number with no shop gets `END` and a short sentence
+(`/sms`: the sentence as the body, no text sent) and nothing is written; with a shop it may use it. Every IPv6 client
+address is counted by its /64 (an IPv4-mapped one as the IPv4 address). Deploys do not migrate: a deploy that adds a
+file in `sql/` needs `npm run db:migrate` (direct connection string) before it is promoted.
 
 ## Secrets
 

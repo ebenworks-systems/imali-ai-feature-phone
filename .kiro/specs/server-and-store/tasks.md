@@ -9,7 +9,8 @@ tests in group 7 use the real handlers.
 
 Task 9.3 needed a person with a test database and has been done (it is ticked, with the date and the numbers). Task 9.4
 needs a person with the Vercel and Neon accounts and stays unticked until that person has done it. Group 11 added later
-fixes; its task 11.9 asks the same person to run the Postgres suites again for the new tests.
+fixes; its task 11.9 asks the same person to run the Postgres suites again for the new tests. Group 12 closes seven more
+faults found when the group 11 fixes were read again; its task 12.8 asks for the same Postgres run for `clearMany`.
 
 ## 0. Before you start
 
@@ -537,3 +538,73 @@ fails on the code as it was and passes now. The Postgres-only parts could not be
   - Run 7 Nov 2026 against a Neon test branch: 99 test files, 2,098 tests passed, none skipped.
   - Files: none
   - Requirements: 104, 108, 109
+
+## 12. Fixes after the second review's fixes were read again
+
+A second round of review read group 11 and found seven more faults; each was confirmed. Each code item has a test that
+fails on the code as it was and passes now. Item 5 of the seven is `browser-phone` task 66.
+
+- [x] 12.1 **The Africa's Talking routes no longer make demo shops.** `routes/at.ts` has `storeFor(ctx, phone)`: a number
+  that is not a demo number gets `ctx.store`; a demo number with a shop gets `ctx.browserStore` (it cannot make a shop);
+  a demo number with no shop gets no store, and `/ussd` answers `END No demo shop for this number. Start a demo first.`
+  and `/sms` answers that sentence as its body, with no handler call, no claim, no text sent and nothing written. The
+  `/sms` check comes after the "too long" check and before the claim. New test file `test/server/routes.demonumbers.test.ts`
+  (real handlers; four posts that made a shop before; with and without `AT_CALLBACK_KEY`; the browser route still 404s
+  afterwards; a demo number with a shop still works and is never texted; a number that is not a demo number still signs
+  up; a shop cleared between the look and the handler is not made again). `routes.at.test.ts`, `routes.key.test.ts` and
+  `errors.routes.test.ts` use a number that is not a demo number as the plain caller.
+  - Files: `src/server/routes/at.ts`, `test/server/routes.demonumbers.test.ts`, `test/server/routes.at.test.ts`, `test/server/routes.key.test.ts`, `test/server/errors.routes.test.ts`
+  - Requirements: 118, 124, 125
+
+- [x] 12.2 **IPv6 clients are counted by their /64.** `clientAddress` cuts an address with `:` to its first four groups
+  after expanding `::`, counts `::ffff:a.b.c.d` as the IPv4 address, drops a port, brackets and zone, and counts text with a
+  `:` that is not IPv6 under `unknown`. Tests: `phone.test.ts` (two addresses in one /64, two in different /64s, `::`
+  expansion, the mapped form in dotted and hexadecimal groups) and `limits.address.test.ts` (the 120 a minute, the 10 an
+  hour, the `/sms` limit and the hashed key, each with a new address in the same /64 every time).
+  - Files: `src/server/phone.ts`, `test/server/phone.test.ts`, `test/server/limits.address.test.ts`
+  - Requirements: 119, 124
+
+- [x] 12.3 **One pending call for the whole sweep, and 50 shops a call.** `PendingStore.clearMany(phones)` (memory: a loop;
+  Postgres: one `delete ... where phone in (...)`, nothing for an empty list). `sweepOldDemoShops` calls it once, and not
+  at all when no shop was removed; `DEMO_SWEEP_PER_CALL` is 50. Tests: `housekeeping.test.ts` (no `clear` call, one
+  `clearMany` call with 50 phones; the Postgres pending class on a fake `sql` gets one statement for 50 shops; the cap of
+  50 a call), `test/channels/sms/pending.test.ts`, and `test/store/postgres/pending.test.ts` (runs with a database).
+  - Files: `src/channels/sms/pending.ts`, `src/store/postgres/pending.ts`, `src/server/routes/browser.ts`, `src/server/constants.ts`, tests as above
+  - Requirements: 120, 124
+
+- [x] 12.4 **A demo shop lives 7 days after it is made.** `buildDemoShop` sets `createdAt` to `now`; the records keep their
+  earlier times. Checked that nothing else reads a shop's `createdAt` as the time of its first record (the memory and
+  Postgres sweeps use it as the age of the shop, which is the point; the export and the views read record times).
+  Tests: `demo.test.ts` (created at now at four times of day), `housekeeping.test.ts` (made now, kept 6 days later and at
+  exactly 7, removed a millisecond after).
+  - Files: `src/server/demo.ts`, `test/server/demo.test.ts`, `test/server/housekeeping.test.ts`
+  - Requirements: 121, 124
+
+- [x] 12.5 **(The page.)** See `browser-phone` task 66: the page posts `{}` and takes the number from the 201 answer.
+  - Files: none in this spec
+  - Requirements: none new
+
+- [x] 12.6 **A warning for the public default salt on Vercel.** `readConfig` adds `ADDRESS_SALT is not set, so stored address
+  hashes use the public default salt` when VERCEL is set and ADDRESS_SALT is not. Tests: `config.test.ts` (set, empty,
+  spaces, local run, order), `bootstrap.test.ts` (the server still starts), `vercel.test.ts` (printed at cold start by
+  `api/index.ts`, and not when the salt is set). Existing tests that expected no warnings on Vercel with a database now set
+  `ADDRESS_SALT`.
+  - Files: `src/server/config.ts`, `src/server/bootstrap.ts`, tests as above
+  - Requirements: 122, 124
+
+- [x] 12.7 **Say that a deploy does not migrate.** `docs/run-the-demo.md` ("Migrations are not run by a deploy", the Vercel
+  steps and the table of failures) says that every deploy that adds a file in `sql/` needs `npm run db:migrate` against the
+  direct (unpooled) connection string before that deployment is promoted, and that until then code that needs the new
+  table answers 500. It also describes the new behaviour of the Africa's Talking routes, the /64 counting, the 50 a call,
+  the 7 days and the salt warning. `.kiro/steering/tech.md` has a short note. (`vercel.json` still has no build step on
+  purpose: the migration needs the direct string and a person to promote.)
+  - Files: `docs/run-the-demo.md`, `.kiro/steering/tech.md`
+  - Requirements: 123
+
+- [x] 12.8 **Run the Postgres suites again (a person with a test database).** With TEST_DATABASE_URL set to a direct Neon or
+  local database, run `npx vitest run test/store test/scripts` and check that `PostgresPendingStore.clearMany` (the new test
+  in `test/store/postgres/pending.test.ts`) passes and is not skipped. It could not be run in the session that made group 12:
+  no database is allowed there, and only the fake-`sql` test of the statement ran.
+  - Run 8 Nov 2026 against a Neon test branch: 101 test files, 2,178 tests passed, none skipped.
+  - Files: none
+  - Requirements: 120

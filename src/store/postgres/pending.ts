@@ -63,4 +63,9 @@ export class PostgresPendingStore implements PendingStore {
   async clear(phone: string): Promise<void> {
     await this.sql`delete from pending_questions where phone = ${phone}`;
   }
+
+  async clearMany(phones: readonly string[]): Promise<void> {
+    if (phones.length === 0) return;
+    await this.sql`delete from pending_questions where phone in ${this.sql([...phones])}`;
+  }
 }

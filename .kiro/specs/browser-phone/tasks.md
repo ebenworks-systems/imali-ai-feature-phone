@@ -223,7 +223,7 @@ tests first, then markup and CSS, then the two DOM files, then docs and checks. 
 - [x] 41. **Shop lifecycle and buttons**
   - Files: `public/ledger.js`
   - Requirements: 30, 79, 80, 81, 82, 84, 85
-  - Stored number (checked with `isDemoPhone`, memory fallback if storage throws), Start demo shop with up to three tries on 409, Start over, `aria-disabled` rules, busy labels, `onShop` callback, both Start buttons.
+  - Stored number (checked with `isDemoPhone`, memory fallback if storage throws), Start demo shop (it made its own number and retried on 409 up to three times; task 66 changed that), Start over, `aria-disabled` rules, busy labels, `onShop` callback, both Start buttons.
 
 - [x] 42. **Export**
   - Files: `public/ledger.js`
@@ -399,3 +399,16 @@ again.") and the `length` field of the ussd and sms answers (the counter never s
     sit above the rule in `styles.css`; the contrast table in `design.md` matches. `--on-ink` had no other user and is removed.
     Test: `test/public/skip-link.test.ts` reads `styles.css`, resolves the tokens and fails on the old rule (dark fill,
     `--on-ink`, no ring), and checks the ratios.
+
+- [x] 66. **The page asks for a shop; the server picks the number**
+  - Files: `public/ledger.js`, `public/phone.js`, `test/public/ledger-start.test.ts`, `test/helpers/ledgerPage.ts`, `test/integration/page-contract.test.ts`
+  - Requirements: 79, 80, 82, 109
+  - The page used to make a random number itself and retry on a 409 up to three times, and each clash spent one of the 10 demo
+    calls an hour. `makeShop` in `ledger.js` now posts `{}` to `/api/phone/demo` once and takes the number from the 201 answer
+    (checked with `isDemoPhone`; an answer with no demo number counts as a failure). 429, 503, any other status, a network error and
+    a timeout behave as before: the start error once, and no shop (on "Start over" the old shop stays). `initLedger` no longer
+    takes `random`, and `phone.js` no longer passes it. `demoPhone` stays in `ledger-logic.js` with its tests. `docs/judges.md` did
+    not describe the old way, so it is unchanged. Tests: `ledger-start.test.ts` runs the real `initLedger` on a small fake page
+    (`test/helpers/ledgerPage.ts`, no new dependency) and checks the body `{}`, one call, the number from the answer, every failure
+    above, the busy state and "Start over"; `page-contract.test.ts` runs the same page code against the real app through the
+    page's own `createApi` and checks that the number is the server's, that the ledger card fills, and that a 429 is not retried.

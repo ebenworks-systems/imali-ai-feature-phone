@@ -90,7 +90,39 @@ describe('readConfig', () => {
     const config = readConfig({ VERCEL: '1' });
     expect(config.onVercel).toBe(true);
     expect(config.warnings.join(' ')).toMatch(/DATABASE_URL is not set/);
-    expect(readConfig({ VERCEL: '1', DATABASE_URL: 'x' }).warnings).toEqual([]);
+    expect(readConfig({ VERCEL: '1', DATABASE_URL: 'x', ADDRESS_SALT: 'x' }).warnings).toEqual([]);
+  });
+
+  describe('ADDRESS_SALT on Vercel', () => {
+    const WARNING = 'ADDRESS_SALT is not set, so stored address hashes use the public default salt';
+
+    it('warns, in those words, when VERCEL is set and ADDRESS_SALT is not', () => {
+      expect(readConfig({ VERCEL: '1', DATABASE_URL: 'x' }).warnings).toEqual([WARNING]);
+    });
+
+    it('warns when ADDRESS_SALT is empty or only spaces', () => {
+      expect(readConfig({ VERCEL: '1', DATABASE_URL: 'x', ADDRESS_SALT: '' }).warnings).toEqual([WARNING]);
+      expect(readConfig({ VERCEL: '1', DATABASE_URL: 'x', ADDRESS_SALT: '   ' }).warnings).toEqual([WARNING]);
+    });
+
+    it('does not warn when ADDRESS_SALT is set, and the warning never holds its value', () => {
+      const config = readConfig({ VERCEL: '1', DATABASE_URL: 'x', ADDRESS_SALT: 'value-salt-3z6g' });
+      expect(config.warnings).toEqual([]);
+      expect(config.addressSalt).toBe('value-salt-3z6g');
+    });
+
+    it('does not warn on a local run, with or without the other variables', () => {
+      expect(readConfig({}).warnings).toEqual([]);
+      expect(readConfig({ DATABASE_URL: 'x' }).warnings).toEqual([]);
+      expect(readConfig({ VERCEL: '' }).warnings).toEqual([]);
+    });
+
+    it('comes after the DATABASE_URL warning when both are missing', () => {
+      expect(readConfig({ VERCEL: '1' }).warnings).toEqual([
+        'DATABASE_URL is not set, so records are not kept between calls',
+        WARNING
+      ]);
+    });
   });
 
   it('never puts a value in a warning', () => {

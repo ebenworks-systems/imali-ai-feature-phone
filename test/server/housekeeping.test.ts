@@ -5,9 +5,13 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import type { Sql } from 'postgres';
 import { createShop, type Shop } from '../../src/core/shops/types.js';
 import { createSaleRecord } from '../../src/core/records/types.js';
 import { MemoryStore } from '../../src/store/memory/store.js';
+import type { PendingStore } from '../../src/channels/sms/pending.js';
+import { DEMO_SWEEP_PER_CALL } from '../../src/server/constants.js';
+import { PostgresPendingStore } from '../../src/store/postgres/pending.js';
 import { DEMO_PHONE, OTHER_DEMO_PHONE, START, captureErrors, makeApp, postJson } from './helpers.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -78,18 +82,44 @@ describe('POST /api/phone/demo clears away demo shops made more than 7 days ago'
     expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(3);
   });
 
-  it('removes at most 200 shops a call, so the cost of one call is bounded', async () => {
+  it('removes at most 50 shops a call, so the cost of one call is bounded', async () => {
     const store = new MemoryStore();
-    for (let i = 0; i < 250; i += 1) await addShop(store, `+2700000${String(i).padStart(4, '0')}`, daysAgo(9));
+    for (let i = 0; i < 120; i += 1) await addShop(store, `+2700000${String(i).padStart(4, '0')}`, daysAgo(9));
     const { app } = makeApp({ store });
     const spy = vi.spyOn(store, 'deleteExpiredDemoShops');
     expect((await demo({ phone: '+27000009999' })(app)).status).toBe(201);
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]![1]).toBe(200);
-    expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(250 - 200 + 1);
-    // The next call takes the rest.
+    expect(spy.mock.calls[0]![1]).toBe(50);
+    expect(DEMO_SWEEP_PER_CALL).toBe(50);
+    expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(120 - 50 + 1);
+    // The next calls take the rest.
     expect((await demo({ phone: '+27000009998' })(app)).status).toBe(201);
-    expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(2);
+    expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(120 - 100 + 2);
+    expect((await demo({ phone: '+27000009997' })(app)).status).toBe(201);
+    expect(await store.countShopsWithPhonePrefix('+2700000')).toBe(3);
+  });
+
+  it('keeps a shop a judge made until 7 days after it was made, and removes it after that', async () => {
+    const store = new MemoryStore();
+    const { app, clock } = makeApp({ store });
+    expect((await demo({ phone: DEMO_PHONE })(app)).status).toBe(201);
+    // The shop's createdAt is the time it was made; its oldest invented record is about 2 days earlier.
+    const made = (await store.findShopByPhone(DEMO_PHONE))!;
+    expect(made.createdAt).toBe(START);
+
+    clock.advance(6 * DAY); // 6 days later another judge starts a demo: the sweep runs, the shop stays
+    expect((await demo({ phone: OTHER_DEMO_PHONE })(app)).status).toBe(201);
+    expect(await store.findShopByPhone(DEMO_PHONE)).toEqual(made);
+    expect(await store.listRecords(made.id)).toHaveLength(17);
+
+    clock.advance(DAY); // exactly 7 days after it was made: still kept
+    expect((await demo({ phone: '+27000003333' })(app)).status).toBe(201);
+    expect(await store.findShopByPhone(DEMO_PHONE)).toEqual(made);
+
+    clock.advance(1); // a millisecond past 7 days: removed, with its records
+    expect((await demo({ phone: '+27000004444' })(app)).status).toBe(201);
+    expect(await store.findShopByPhone(DEMO_PHONE)).toBeNull();
+    expect(await store.listRecords(made.id)).toEqual([]);
   });
 
   it('asks the store for the shops made before now minus 7 days, using the app clock', async () => {
@@ -132,6 +162,57 @@ describe('POST /api/phone/demo clears away demo shops made more than 7 days ago'
     await demo()(app);
     expect(await pending.get('+27000001111')).toBeNull();
     expect(await pending.get('+254711000000')).not.toBeNull();
+  });
+
+  it('clears the waiting questions of all the shops it removes in one call, not one call for each shop', async () => {
+    const store = new MemoryStore();
+    for (let i = 0; i < 50; i += 1) await addShop(store, `+2700000${String(i).padStart(4, '0')}`, daysAgo(9));
+    const { app, pending, clock } = makeApp({ store });
+    await pending.set('+27000000007', { kind: 'largeAmount', largeAmount: 1, createdAt: clock.now() });
+    await pending.set('+254711000000', { kind: 'largeAmount', largeAmount: 1, createdAt: clock.now() });
+    const clear = vi.spyOn(pending, 'clear');
+    const clearMany = vi.spyOn(pending, 'clearMany');
+    await demo({ phone: DEMO_PHONE })(app);
+    expect(clear).not.toHaveBeenCalled();
+    expect(clearMany).toHaveBeenCalledTimes(1);
+    expect(clearMany.mock.calls[0]![0]).toHaveLength(50);
+    expect(await pending.get('+27000000007')).toBeNull();
+    expect(await pending.get('+254711000000')).not.toBeNull();
+  });
+
+  it('does not touch the pending store when the sweep removes nothing', async () => {
+    const { app, pending } = makeApp();
+    const spies = [vi.spyOn(pending, 'clear'), vi.spyOn(pending, 'clearMany')];
+    await demo({ phone: DEMO_PHONE })(app);
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('on the Postgres pending store, sends one statement for 50 removed shops and no per-shop call', async () => {
+    // The Postgres ledger store already deletes the questions in the same transaction as the shops. Here the ledger
+    // store is the memory one, so the shops are removed, and the pending store is the Postgres class on a fake `sql`.
+    const statements: Array<{ text: string; values: unknown[] }> = [];
+    const sql = Object.assign(
+      vi.fn((first: unknown, ...values: unknown[]) => {
+        if (Array.isArray(first) && 'raw' in first) {
+          statements.push({ text: (first as unknown as string[]).join('?').replace(/\s+/g, ' ').trim(), values });
+          return Promise.resolve([]);
+        }
+        return { list: first }; // sql([...phones]) used as a list helper
+      }),
+      {}
+    ) as unknown as Sql;
+    const pending: PendingStore = new PostgresPendingStore(sql);
+    const clear = vi.spyOn(pending, 'clear');
+
+    const store = new MemoryStore();
+    for (let i = 0; i < 50; i += 1) await addShop(store, `+2700000${String(i).padStart(4, '0')}`, daysAgo(9));
+    const { app } = makeApp({ store, pending });
+    expect((await demo({ phone: DEMO_PHONE })(app)).status).toBe(201);
+
+    expect(clear).not.toHaveBeenCalled();
+    expect(statements).toHaveLength(1);
+    expect(statements[0]!.text).toBe('delete from pending_questions where phone in ?');
+    expect((statements[0]!.values[0] as { list: string[] }).list).toHaveLength(50);
   });
 
   it('lets a number that was cleared away be used for a new shop', async () => {

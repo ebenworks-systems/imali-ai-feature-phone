@@ -6,7 +6,6 @@ import { ApiError, ROUTES, exportUrl, isShopGone, ledgerUrl } from './api.js';
 import {
   DEFAULT_TIME_ZONE,
   currencyLabel,
-  demoPhone,
   exportFileName,
   formatMoney,
   isDemoPhone,
@@ -17,7 +16,6 @@ import {
 } from './ledger-logic.js';
 
 export const STORAGE_KEY = 'imali-demo-phone';
-const MAX_TRIES = 3;
 const SHOWN_OWES = 6;
 
 const TEXT = Object.freeze({
@@ -45,11 +43,10 @@ function el(tag, className, text) {
  * @param {Document} options.root
  * @param {{ postJson: Function, getJson: Function, getBlob: Function }} options.api
  * @param {Storage | null} options.storage may throw when used (private mode)
- * @param {() => number} options.random returns an unsigned 32-bit integer
  * @param {(phone: string | null) => void} options.onShop
  * @param {(ledger: object) => void} [options.onData]
  */
-export function initLedger({ root, api, storage, random, onShop, onData = () => {} }) {
+export function initLedger({ root, api, storage, onShop, onData = () => {} }) {
   const $ = (id) => root.getElementById(id);
   const els = {
     section: $('ledger'),
@@ -297,24 +294,26 @@ export function initLedger({ root, api, storage, random, onShop, onData = () => 
   // Shop lifecycle (requirements 79, 80, 82)
   // ------------------------------------------------------------------------------------------------------------
 
-  const newPhone = () => demoPhone(random() % 10000);
+  /**
+   * Asks the server for a demo shop and returns its number, or null. The page names no number: the server picks one
+   * (it tries up to 20 free ones), so a clash never costs the visitor one of the 10 demo calls an hour. Every
+   * failure (429, 503, a network error, an answer with no usable number) is the same to the page: no shop.
+   */
+  async function askForShop() {
+    try {
+      const answer = await api.postJson(ROUTES.demo, {});
+      return answer && isDemoPhone(answer.phone) ? answer.phone : null;
+    } catch {
+      return null;
+    }
+  }
 
   async function makeShop(kind) {
     if (busy.start || busy.over || busy.export) return;
     busy[kind] = true;
     showActionError('');
     drawButtons();
-    let made = null;
-    for (let attempt = 0; attempt < MAX_TRIES && made === null; attempt += 1) {
-      const candidate = newPhone();
-      try {
-        await api.postJson(ROUTES.demo, { phone: candidate });
-        made = candidate;
-      } catch (error) {
-        const taken = error instanceof ApiError && error.kind === 'http' && error.status === 409;
-        if (!taken) break; // a number that is taken is retried; any other failure stops here
-      }
-    }
+    const made = await askForShop();
     busy[kind] = false;
     if (made === null) {
       showActionError(TEXT.startError);

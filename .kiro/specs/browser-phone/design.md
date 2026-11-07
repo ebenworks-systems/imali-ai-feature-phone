@@ -633,15 +633,16 @@ is no cookie. The api helper never logs request bodies.
 
 ### `ledger.js`
 
-`initLedger({ root, api, storage, random, onShop })` returns `{ refresh(), forget(phone), phone(), timeZone() }`.
+`initLedger({ root, api, storage, onShop })` returns `{ refresh(), forget(phone), phone(), timeZone() }`.
 
 - On load: read the number from `storage` (key `imali-demo-phone`) and check it with `isDemoPhone`. No number:
   first-visit state. A number: `GET /api/ledger`; 404 forgets the number (requirement 81). `initLedger` also returns
   `forget(phone)`: `phone.js` calls it when `POST /api/phone/ussd` or `/sms` answers 404 (`isShopGone(error)` in `api.js`,
   requirement 107), and it does the same as the 404 above if the number is still the page's own.
-- `startDemo()`: pick up to three numbers with `crypto.getRandomValues` (`value % 10000`; the bias of 7296 in 2^32 is
-  negligible for a demo). `POST /api/phone/demo`; 409 tries the next number; success stores the number, calls
-  `onShop(phone)` and `refresh()`.
+- `startDemo()`: `POST /api/phone/demo` with `{}`; the number comes from `phone` in the 201 answer (checked with
+  `isDemoPhone`). The page picks no number and does not retry: the server tries up to 20 free numbers, and each retry the
+  page used to make on a 409 spent one of the 10 demo calls an hour (requirement 109). Any failure, or an answer with no
+  usable number, shows the start error once. Success stores the number, calls `onShop(phone)` and `refresh()`.
 - `startOver()`: same as `startDemo()`, but run from the "Start over" button. The new `onShop(phone)` call resets the
   phone (session, thread, counter). If making the new shop fails, the old shop and the phone are left as they were.
 - `exportRecords()`: `getBlob`, an object URL, a temporary `<a download>`, a click, then `URL.revokeObjectURL`.

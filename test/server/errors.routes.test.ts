@@ -45,21 +45,21 @@ describe('a store that throws a database-looking error', () => {
   it('POST /sms: 200 with the plain sentence; the message and the stack are logged, not answered', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { app } = makeApp({ store: failingStore() });
-    const res = await postForm(app, '/sms', { from: '+27000001234', text: 'sold 3 bread 45' });
+    const res = await postForm(app, '/sms', { from: '+254711000034', text: 'sold 3 bread 45' });
     expect(res.status).toBe(200);
     expect(await res.clone().text()).toBe(GENERIC);
     expectNoLeak(await everything(res));
     const line = JSON.parse(logged(log).split('\n')[0]!);
     expect(line).toMatchObject({ level: 'error', route: '/sms', name: 'PostgresError', message: SECRET_MESSAGE });
     expect(line.stack).toContain(SECRET_MESSAGE);
-    expect(line.phone).toBe('+270***34');
-    expect(logged(log)).not.toContain('+27000001234');
+    expect(line.phone).toBe('+254***34');
+    expect(logged(log)).not.toContain('+254711000034');
   });
 
   it('POST /ussd: 200 END with a plain sentence; the message is logged, not answered', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { app } = makeApp({ store: failingStore() });
-    const res = await postForm(app, '/ussd', { sessionId: 'S1', serviceCode: '*384*46254#', phoneNumber: '+27000001234', text: '' });
+    const res = await postForm(app, '/ussd', { sessionId: 'S1', serviceCode: '*384*46254#', phoneNumber: '+254711000034', text: '' });
     expect(res.status).toBe(200);
     const body = await res.clone().text();
     expect(body).toMatch(/^END Sorry, something went wrong/);
@@ -93,7 +93,7 @@ describe('a store that throws a database-looking error', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { app } = makeApp({ store: failingStore() });
     const responses = [
-      await postForm(app, '/sms', { from: '+27000001234', text: 'today' }),
+      await postForm(app, '/sms', { from: '+254711000034', text: 'today' }),
       await postJson(app, '/api/phone/sms', { phone: DEMO_PHONE, text: 'today' })
     ];
     for (const res of responses) {
@@ -108,7 +108,7 @@ describe('a store that throws a database-looking error', () => {
     // Built in pieces so the scanner for keys in staged files does not take this fake value for a real one.
     const url = ['postgres', '://demo_user:', 'not-a-real-password', '@db.example.invalid/demo_db'].join('');
     const { app } = makeApp({ store: failingStore(`could not connect to ${url}`) });
-    const res = await postForm(app, '/sms', { from: '+27000001234', text: 'today' });
+    const res = await postForm(app, '/sms', { from: '+254711000034', text: 'today' });
     const text = await everything(res);
     expect(text).not.toContain('not-a-real-password');
     expect(text).not.toContain('db.example.invalid');
@@ -121,7 +121,7 @@ describe('a store that throws a database-looking error', () => {
     const store = new MemoryStore();
     vi.spyOn(store, 'findShopByPhone').mockRejectedValue('just a string, not an Error');
     const { app } = makeApp({ store });
-    const res = await postForm(app, '/sms', { from: '+27000001234', text: 'today' });
+    const res = await postForm(app, '/sms', { from: '+254711000034', text: 'today' });
     expect(await res.text()).toBe(GENERIC);
   });
 });
@@ -143,7 +143,7 @@ describe('the sender and the processed-text store', () => {
     const processed = new InMemoryProcessedTextStore();
     vi.spyOn(processed, 'claim').mockRejectedValue(new Error(SECRET_MESSAGE));
     const { app } = makeApp({ processed });
-    const res = await postForm(app, '/sms', { from: '+27000001234', text: 'today', id: 'ATXid_1' });
+    const res = await postForm(app, '/sms', { from: '+254711000034', text: 'today', id: 'ATXid_1' });
     expect(res.status).toBe(200);
     expect(await res.clone().text()).toBe(GENERIC);
     expectNoLeak(await everything(res));

@@ -39,6 +39,8 @@ export interface PendingStore {
   set(phone: string, question: PendingQuestion): Promise<void>;
   /** Forget the question for this phone. Does nothing when there is none. */
   clear(phone: string): Promise<void>;
+  /** Forget the questions of all these phones in one call. Does nothing for a phone with none, or for an empty list. */
+  clearMany(phones: readonly string[]): Promise<void>;
 }
 
 export interface InMemoryPendingStoreOptions {
@@ -74,6 +76,10 @@ export class InMemoryPendingStore implements PendingStore {
 
   async clear(phone: string): Promise<void> {
     this.data.delete(phone);
+  }
+
+  async clearMany(phones: readonly string[]): Promise<void> {
+    for (const phone of phones) this.data.delete(phone);
   }
 
   /** Remove every question (for every phone) that is more than 10 minutes old. */

@@ -385,13 +385,23 @@ export { normalizePhone } from '../channels/phone.js';
 export function isDemoPhone(phone: string): boolean;     // /^\+2700000\d{4}$/ on a normalised number
 export function maskPhone(phone: string): string;        // first 4 characters + '***' + last 2
 export function clientAddress(headers: { get(name: string): string | null | undefined }): string;
-// x-real-ip (trimmed); else the LAST entry of x-forwarded-for (trimmed); else 'unknown'; cut to 64 characters
+// x-real-ip (trimmed); else the LAST entry of x-forwarded-for (trimmed); else 'unknown'; cut to 64 characters;
+// then an address with ':' is cut to its /64, and an IPv4-mapped one becomes the IPv4 address (group 12)
 ```
 
 `clientAddress` reads `x-real-ip` first because Vercel sets it to the address that connected. A proxy adds the address it
 saw to the end of `x-forwarded-for`, so the last entry is the platform's and the first is whatever the caller wrote; the
 first entry is never used (group 11). Run anywhere else (a local run, tests) both can be written by the caller or are
 missing, and the shared key `unknown` is used.
+
+One IPv6 client usually holds a whole /64, so counting each address on its own would let it send every request from a
+new address and never meet a limit (group 12). An address that contains `:` is therefore cut to its first four groups
+before it is used as a limiter key and before it is hashed: `::` is expanded first (`2001:db8::1` is
+`2001:db8:0:0:0:0:0:1`, so its key is `2001:db8:0:0`), each group is written in lower case without leading zeros, and
+the key is the four groups joined by `:`. `[...]`, a port and a `%zone` are dropped. An IPv4-mapped address
+(`::ffff:a.b.c.d`, or the same in two hexadecimal groups) becomes `a.b.c.d`. A dotted IPv4 address stays as it is (a
+`:port` after it is dropped). A value with a `:` that is not an IPv6 address counts under `unknown`, so a caller cannot
+make a new key by writing a new string.
 
 ### `src/server/callbackKey.ts`
 
@@ -479,7 +489,7 @@ and formats with `formatCents(cents, shop.currency)`.
 
 ```ts
 export const DEMO_SHOP_NAME = "Thandi's Spaza";
-export function buildDemoShop(phone: string, now: Date): Shop;       // ZAR, Africa/Johannesburg, createdAt = oldest record time
+export function buildDemoShop(phone: string, now: Date): Shop;       // ZAR, Africa/Johannesburg, createdAt = now (the time it is made)
 export function buildDemoRecords(shop: Shop, now: Date): Record[];    // in append order
 ```
 
@@ -558,13 +568,22 @@ plain text from the path).
 
 `POST /ussd`: `c.req.parseBody()` (form). Needs string fields `sessionId`, `serviceCode`, `phoneNumber`; `text` defaults
 to `''`. Order of checks: missing field or bad phone -> 400 text; latest segment
-(`text.split('*').pop()`) over `MAX_MENU_INPUT` -> 200 `END ` + `SENTENCES.menuLong`; call
+(`text.split('*').pop()`) over `MAX_MENU_INPUT` -> 200 `END ` + `SENTENCES.menuLong`; **a demo number with no shop -> 200
+`END ` + `SENTENCES.noShop`, with no handler call and nothing written (group 12)**; call
 `handleUssd({ sessionId, serviceCode, phoneNumber: normalised, text, now: now(), store })`; if `response` does not
 start with `CON ` or `END `, log it and answer `END ` + `SENTENCES.generic`; else 200 `text/plain` with `response`.
 
+The `store` the handlers get comes from `storeFor(ctx, phone)` in `routes/at.ts`: for a number that is not a demo number
+it is `ctx.store` (the sign-up may run); for a demo number with a shop it is `ctx.browserStore` (the store that cannot
+make a shop, as on the browser routes); for a demo number with no shop there is no store and the route answers as above.
+Only `POST /api/phone/demo` makes demo shops. Before group 12 these routes passed `ctx.store`, which lets demo numbers
+through `withShopLimit`, so with no sender and no key (a local run) four posts made a shop on a demo number without
+the limits of the demo route.
+
 `POST /sms`: needs `from` and `text` (`to` and `date` are read for the log only; the clock is ours). Missing or bad
 phone -> 400 text. `text.length > MAX_SMS_TEXT` -> reply `SENTENCES.smsLong`, skip the handler (and skip the claim
-below), send the reply. Otherwise:
+below), send the reply. **A demo number with no shop -> 200 `text/plain` with `SENTENCES.noShop`, no text sent (demo
+numbers never get one), no handler call, no claim and nothing written.** Otherwise:
 
 1. **Claim the message id** (see "Repeated text callbacks"). Only when `id` matches `MESSAGE_ID_PATTERN`.
    `processed.claim(phone, id)` gives `done` (answer 200 with the stored reply; no handler, no send), `working`
@@ -636,8 +655,9 @@ Three things guard `POST /api/phone/demo`, in this order. The first runs before 
    `SENTENCES.demoRate`. Every allowed call counts, including a call that later ends in 400 or 409, so the route cannot
    be used to probe numbers without a cost; a refused call does not count. The count is in the `DemoQuotaStore`
    (memory in tests and local runs, the `demo_quota` table on Vercel), so it holds across instances (group 11).
-2. **Housekeeping, then two ceilings.** After the body and phone checks, `deleteExpiredDemoShops(now - 7 days, 200)` clears
-   away old demo shops (the memory pending store is cleared for the phone numbers it gives back). Then: the whole site
+2. **Housekeeping, then two ceilings.** After the body and phone checks, `deleteExpiredDemoShops(now - 7 days, 50)` clears
+   away old demo shops (`DEMO_SWEEP_PER_CALL`, 50, because this is on the request path), then makes one call,
+   `pending.clearMany(phones)`, for the phone numbers it gives back (never one call for each shop; group 12). Then: the whole site
    may make 1,000 demo shops in 24 hours (`quota.madeToday()`), and the store may hold 5,000 demo shops
    (`countShopsWithPhonePrefix`); either gives 503 with `SENTENCES.demoFull` and nothing is created. The counts and the
    insert are separate steps, so simultaneous calls can pass a ceiling by a few shops, as with the record cap.
@@ -663,6 +683,11 @@ Body reading: `await c.req.json()` in a `try`; a failure or a non-object gives 4
   `sql.begin`; `select id, phone from shops where phone ~ <pattern> and created_at < $1 order by created_at, id limit $2
   for update`; `delete from pending_questions where phone in (...)`; `delete from records where shop_id in (...)`;
   `delete from shops where id in (...) and phone ~ <pattern>`. Memory: the same on its maps. `limit` is clamped to 1,000.
+  The Postgres store deletes the waiting questions in that transaction. The route still makes one `clearMany` call for
+  the memory pending store, which is a separate object; on Postgres that one statement finds nothing left to delete.
+  `PendingStore.clearMany(phones)` is one call for many phones (one `delete ... where phone in (...)` on Postgres, a loop
+  over the map in memory, nothing for an empty list). A demo shop's `createdAt` is the time it is made, so it lives 7
+  days; the invented records keep their earlier times.
 - `withShopLimit(store, 2000)` (in `src/store/limit.ts`): `createShop` for a number that is not a demo number counts
   `countShopsWithPhonePrefix('')` minus the demo count and throws `ShopLimitError` at the cap, unless the shop (by phone or
   id) already exists, in which case the store answers as before. A number that starts with `+2700000` but is not a whole
@@ -722,7 +747,9 @@ comes from AT_CALLBACK_KEY and goes to `createApp`.
 `summary` looks like `store=postgres gemini=off sms=sandbox callback=key salt=default` (`sms` is `off`, `sandbox` or
 `live`; `callback` is `key`, `missing-key` or `open`; `salt` is `default` or `set`; never a value). `callback=missing-key`
 means the sender is set and AT_CALLBACK_KEY is not, so `createApp` gets `refuseCallbacks: true`. The entries log `summary` and each warning once. If `onVercel` and there
-is no `databaseUrl`, a warning is added.
+is no `databaseUrl`, a warning is added. If `onVercel` and `ADDRESS_SALT` is not set, a second warning is added: `ADDRESS_SALT is
+not set, so stored address hashes use the public default salt` (the built-in salt is in this repository, so anyone who can
+read `demo_quota` could hash every IPv4 address; a local run has no warning).
 
 ### `src/server/node.ts` and `src/server/main.ts`
 
@@ -854,7 +881,7 @@ the path, calls `logError(path, error, phone)` and answers with `ownerSentence(e
 | `AT_CALLBACK_KEY` | server | when set, `POST /ussd` and `POST /sms` need `?k=<this value>` or answer 403 | those routes are open when no sender is set, and answer 503 when the sender is set |
 | `ADDRESS_SALT` | server | the salt client addresses are hashed with before the demo limits are kept | a fixed built-in salt (`salt=default` on the start line) |
 | `TEST_DATABASE_URL` | Postgres tests | a direct (not pooled) connection to a database the tests may use | those tests skip |
-| `VERCEL` | set by Vercel | used only for the memory-store warning | |
+| `VERCEL` | set by Vercel | used only for the memory-store warning and the default-salt warning | |
 
 `.env.example` has all of the above except `VERCEL`, each with an empty value. The `.gitignore` already ignores `.env`
 and `.env.*` except `.env.example`.
@@ -957,7 +984,8 @@ How they work:
    `?k=<AT_CALLBACK_KEY>` (the key is part of the address, so it can show in request logs; change it if it leaks);
    test in the simulator.
 7. If something fails: what a plain error means, where the log is (Vercel runtime logs), the memory-store warning,
-   and the checks for the first deploy (rewrite keeps the original path; `/health` answers).
+   and the checks for the first deploy (rewrite keeps the original path; `/health` answers); and that every deploy that
+   adds a file in `sql/` needs `npm run db:migrate` against the direct connection string before it is promoted (group 12).
 
 ## Decisions that were open
 
@@ -990,13 +1018,14 @@ How they work:
   repeat from the stored reply. A function that dies after the claim and before the reply leaves a claim that answers
   "working" until it expires (48 hours).
 - **Demo shops.** Each costs 18 rows (the shop and 17 records); 5,000 shops is about 90,000 rows. The cap, the 10 an hour
-  per address and the 1,000 a day are counted in the database; demo shops are cleared away after about 5 days (their
-  `createdAt` is two days before they are made). The 60-per-minute limit on `demo-create`, the 120 a minute per address
+  per address and the 1,000 a day are counted in the database; demo shops are cleared away 7 days after they are made
+  (their `createdAt` is the time they are made; group 12 changed it from the oldest invented record, which removed a shop
+  after about 5 days). The 60-per-minute limit on `demo-create`, the 120 a minute per address
   and the limits on `/ussd` and `/sms` are per instance. The address comes from `x-real-ip` and the last entry of
   `x-forwarded-for`; a caller that talks to the Node server directly could write both, which does not matter for a local
-  run. A demo number can still be signed up through `/ussd` or `/sms` by someone who has the callback key (those routes
-  are for Africa's Talking). The 7-day clean-up removes those shops too, but the cap of 5,000 is checked only when a demo
-  shop is made through `POST /api/phone/demo`, so such sign-ups are held back by the key and the limits on `/ussd` and
-  `/sms`, not by that cap.
+  run. An IPv6 address is counted by its /64. A demo number cannot be signed up through `/ussd` or `/sms` (group 12): a
+  demo number with no shop gets `END` and a sentence there, so the cap of 5,000 and the limits of `POST /api/phone/demo`
+  cover every way a demo shop is made. The hashes use a built-in salt that is public unless `ADDRESS_SALT` is set; the
+  start-up warns about that on Vercel. Nothing migrates the database on deploy (see the task 12.7 note).
 - **The 2,000-record cap is check-then-insert** and can be passed by a few concurrent writes.
 - **The rate limit is per instance** (requirement 46).

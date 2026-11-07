@@ -59,10 +59,13 @@ Limits on demo shops:
   the table holds a SHA-256 hash of the address and `ADDRESS_SALT` (see Variables). Rows older than 24 hours are removed.
 - The address is read from `x-real-ip` (Vercel sets it to the address that connected), then from the last entry of
   `x-forwarded-for`, then it is the shared key `unknown`. The first entry of `x-forwarded-for` is never used, because a
-  caller can write it.
-- Demo shops are invented data and are cleared away after about a week. Each call to `POST /api/phone/demo` first removes
-  up to 200 demo shops made more than 7 days ago, with their records, so the cap of 5,000 frees itself. Only shops on a
-  demo number are ever removed. A shop on any other number is never touched.
+  caller can write it. An IPv6 address is counted by its first four groups (its /64, after `::` is expanded), because
+  one client usually holds a whole /64 and could send each request from a new address in it. An IPv4-mapped IPv6
+  address (`::ffff:a.b.c.d`) counts as the IPv4 address. An IPv4 address is used as it is.
+- Demo shops are invented data and are cleared away 7 days after they were made (the shop's `createdAt` is the time it was
+  made; its invented records are dated about 2 days earlier and do not count). Each call to `POST /api/phone/demo` first
+  removes up to 50 demo shops made more than 7 days ago, with their records, so the cap of 5,000 frees itself. Only
+  shops on a demo number are ever removed. A shop on any other number is never touched.
 - Every browser route is also limited to 120 requests a minute per client address, besides 60 a minute per phone number.
   These two counts live in the memory of one instance.
 
@@ -85,6 +88,14 @@ A demo number that has no shop is refused on `/api/phone/ussd` and `/api/phone/s
 menu and the text messages would otherwise sign a new owner up. Only `POST /api/phone/demo` makes demo shops. The page
 treats that `404`, like the one from `/api/ledger`, as a stale number and quietly returns to the first-visit state.
 
+The same holds on Africa's Talking's own addresses, with or without the callback key. `POST /ussd` for a demo number
+with no shop answers `END No demo shop for this number. Start a demo first.`, and `POST /sms` answers that sentence as
+its body and sends no text. Neither runs a handler or writes anything (no shop, no record, no waiting question, no
+claim on the text's `id`). A demo number that has a shop can use `/ussd` and `/sms`, but those routes cannot make one.
+With no sender and no key (a local run) the two addresses are open, so this is what stops them making demo shops. The
+page asks for a shop with `POST /api/phone/demo` and an empty body `{}`, and uses the number in the `201` answer. The
+server tries up to 20 free numbers, so the page never picks a number or retries a clash.
+
 ### Variables
 
 | Name | What it does | If it is empty |
@@ -97,7 +108,7 @@ treats that `404`, like the one from `/api/ledger`, as a stale number and quietl
 | `AT_API_KEY` | Africa's Talking API key | no text replies are sent |
 | `AT_SHORTCODE` | Short code that text replies come from | `46254` (the sandbox short code) |
 | `AT_CALLBACK_KEY` | Closes `/ussd` and `/sms` to anyone without `?k=<AT_CALLBACK_KEY>` in the address | with `AT_USERNAME` and `AT_API_KEY` set: both answer `503` until it is set. With no sender (a local run): both stay open |
-| `ADDRESS_SALT` | A long random string. Client addresses are hashed with it before the demo limits are kept | a fixed built-in salt, the same in every instance (the start line says `salt=default`) |
+| `ADDRESS_SALT` | A long random string. Client addresses are hashed with it before the demo limits are kept | a fixed built-in salt, the same in every instance (the start line says `salt=default`). The salt is in this public repository, so on Vercel set `ADDRESS_SALT`: without it anyone who can read the `demo_quota` table can recover IPv4 addresses by hashing every address, and the start-up warns. A local run has no warning |
 | `TEST_DATABASE_URL` | A database the Postgres tests may use | those tests are skipped |
 
 Replies go out as text messages only when both `AT_USERNAME` and `AT_API_KEY` are set. Replies to demo numbers are
@@ -161,6 +172,17 @@ the URL is a pooled one, or a proxy dropped the option. Use the direct connectio
 
 Use the **pooled** string as `DATABASE_URL` on Vercel. Use the **direct** string as `TEST_DATABASE_URL`.
 
+### Migrations are not run by a deploy
+
+Nothing runs migrations when Vercel deploys (`vercel.json` has no build step that does). **Every deploy that adds a
+file in `sql/` needs `npm run db:migrate` against the direct (unpooled) connection string before that deployment is
+promoted.** Until it has run, any code that needs the new table answers `500`. The order is:
+
+1. Run `DATABASE_URL='<direct connection string>' npm run db:migrate` and check that it printed the new file's name.
+2. Then promote the deployment (or merge, if merging deploys to production).
+
+Use the direct string, not the pooled one, for the migration.
+
 ## 5. Vercel (the live server)
 
 1. Import the repository in Vercel. Leave the framework as **Other**. Vercel reads `vercel.json`, serves `public/` as
@@ -169,7 +191,9 @@ Use the **pooled** string as `DATABASE_URL` on Vercel. Use the **direct** string
    `GEMINI_API_KEY`, `GEMINI_MODEL`, `AT_USERNAME`, `AT_API_KEY`, `AT_SHORTCODE` and `AT_CALLBACK_KEY`. Set
    `AT_CALLBACK_KEY` whenever you set `AT_USERNAME` and `AT_API_KEY` (see "The callback key").
 3. Pick a function region near your Neon region.
-4. Deploy, then open `https://imali-ai-feature-phone.vercel.app/health`. It should say `{"ok":true}`.
+4. If this deploy adds a file in `sql/`, run `npm run db:migrate` against the direct connection string first (see
+   "Migrations are not run by a deploy"). Then deploy, and open `https://imali-ai-feature-phone.vercel.app/health`. It
+   should say `{"ok":true}`.
 
 Vercel runs Node 22 because `package.json` says `"engines": { "node": "22.x" }`.
 
@@ -225,6 +249,9 @@ is saved twice.
 | `503 This service is not set up yet.` on `/ussd` or `/sms` | The Africa's Talking sender is set but `AT_CALLBACK_KEY` is not. Set the key. |
 | `Use a demo number: +2700000 followed by 4 digits.` | The browser routes accept demo numbers only. |
 | `Got your message. Working on it.` | A repeat of a text arrived while the first one was still being handled. |
+| Start-up warning: ADDRESS_SALT is not set, so stored address hashes use the public default salt | The server is on Vercel without `ADDRESS_SALT`. Set it to a long random string. |
+| `500` or `Sorry, something went wrong.` right after a deploy, and the log names a missing table | The deploy added a file in `sql/` and `npm run db:migrate` has not been run. Run it against the direct connection string. |
+| `END No demo shop for this number. Start a demo first.` on `/ussd`, or that sentence as the body of `/sms` | A demo number with no shop. Only `POST /api/phone/demo` makes demo shops. |
 | Start-up warning: records are not kept between calls | The server is on Vercel without `DATABASE_URL`, so records live in one instance's memory. Set `DATABASE_URL`. |
 
 No answer ever holds a stack trace, a database message or a connection string.

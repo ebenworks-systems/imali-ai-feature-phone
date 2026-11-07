@@ -63,4 +63,27 @@ describe('api/index.ts', () => {
     expect(String(log.mock.calls[0]![0])).toContain('store=memory');
     expect(warn.mock.calls.map((c) => String(c[0])).join(' ')).toMatch(/records are not kept between calls/);
   });
+
+  it('prints the ADDRESS_SALT warning on the start line when VERCEL is set and ADDRESS_SALT is not', async () => {
+    for (const name of ['DATABASE_URL', 'GEMINI_API_KEY', 'AT_USERNAME', 'AT_API_KEY', 'AT_CALLBACK_KEY', 'ADDRESS_SALT']) {
+      vi.stubEnv(name, '');
+    }
+    vi.stubEnv('VERCEL', '1');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await import('../../api/index.js');
+    expect(warn.mock.calls.map((c) => String(c[0]))).toContain(
+      'Warning: ADDRESS_SALT is not set, so stored address hashes use the public default salt'
+    );
+  });
+
+  it('prints no ADDRESS_SALT warning when it is set', async () => {
+    for (const name of ['DATABASE_URL', 'GEMINI_API_KEY', 'AT_USERNAME', 'AT_API_KEY', 'AT_CALLBACK_KEY']) vi.stubEnv(name, '');
+    vi.stubEnv('ADDRESS_SALT', 'value-salt-3z6g');
+    vi.stubEnv('VERCEL', '1');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await import('../../api/index.js');
+    expect(warn.mock.calls.map((c) => String(c[0])).join(' ')).not.toContain('ADDRESS_SALT');
+  });
 });

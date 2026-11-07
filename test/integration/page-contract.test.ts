@@ -7,10 +7,12 @@
  * a text message, and hands the real JSON answers to the page's own readers.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, ROUTES, createApi, isShopGone } from '../../public/api.js';
-import { formatMoney, readLedger, recordRows, sortOwes } from '../../public/ledger-logic.js';
+import { STORAGE_KEY, initLedger } from '../../public/ledger.js';
+import { formatMoney, isDemoPhone, readLedger, recordRows, sortOwes } from '../../public/ledger-logic.js';
 import { buildUssdText, counterInfo, parseSmsReply, parseUssdReply } from '../../public/phone-logic.js';
+import { makeLedgerPage, memoryStorage } from '../helpers/ledgerPage.js';
 import { DEMO_PHONE, makeApp, postJson } from '../server/helpers.js';
 
 type App = ReturnType<typeof makeApp>['app'];
@@ -227,5 +229,80 @@ describe('the page reads the server\'s 404 for a number with no demo shop', () =
     const api = pageApi(app);
     expect(parseUssdReply(await api.postJson(ROUTES.ussd, { phone: DEMO_PHONE, sessionId: 's1', text: '' })).ok).toBe(true);
     expect(parseSmsReply(await api.postJson(ROUTES.sms, { phone: DEMO_PHONE, text: 'today' })).ok).toBe(true);
+  });
+});
+
+describe('Start demo shop: the page asks, the server picks the number', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** The real page code (initLedger) on a fake page, talking to the real app through the page's own api helper. */
+  function pageOn(app: App) {
+    vi.useFakeTimers();
+    const page = makeLedgerPage();
+    vi.stubGlobal('document', page.document);
+    const requests: Array<{ url: string; body: string }> = [];
+    const api = createApi({
+      fetchFn: ((url: string, init?: RequestInit) => {
+        requests.push({ url, body: String(init?.body ?? '') });
+        return app.request(url, init);
+      }) as unknown as typeof fetch
+    });
+    const storage = memoryStorage();
+    const onShop = vi.fn();
+    const ledger = initLedger({
+      root: page.root as unknown as Document,
+      api,
+      storage: storage as unknown as Storage,
+      onShop
+    });
+    const settle = async () => {
+      for (let i = 0; i < 20; i += 1) await vi.advanceTimersByTimeAsync(50);
+    };
+    return { page, requests, storage, ledger, onShop, settle };
+  }
+
+  it('posts {} to /api/phone/demo, gets a 201 with a demo number, and shows that shop\'s ledger', async () => {
+    const { app, store } = makeApp();
+    const { page, requests, storage, ledger, onShop, settle } = pageOn(app);
+    page.startButtons[0]!.click();
+    await settle();
+
+    const demoCalls = requests.filter((r) => r.url === ROUTES.demo);
+    expect(demoCalls).toEqual([{ url: ROUTES.demo, body: '{}' }]);
+    const phone = ledger.phone();
+    expect(phone).not.toBeNull();
+    expect(isDemoPhone(phone)).toBe(true);
+    expect(await store.findShopByPhone(phone!)).not.toBeNull();
+    expect(storage.data.get(STORAGE_KEY)).toBe(phone);
+    expect(onShop).toHaveBeenCalledWith(phone);
+    // The ledger card was filled from the real answer for the number the server chose.
+    expect(requests.some((r) => r.url === `${ROUTES.ledger}?phone=${encodeURIComponent(phone!)}`)).toBe(true);
+    expect(page.node('ledger-title').textContent).toBe("Thandi's Spaza");
+    expect(page.node('action-error').hidden).toBe(true);
+  });
+
+  it('spends one demo call for each press, however crowded the numbers are', async () => {
+    const { app } = makeApp({});
+    const { page, requests, settle } = pageOn(app);
+    page.startButtons[0]!.click();
+    await settle();
+    page.node('over-btn').click();
+    await settle();
+    expect(requests.filter((r) => r.url === ROUTES.demo)).toHaveLength(2);
+  });
+
+  it('shows the start error and keeps no shop when the server says the address has made too many', async () => {
+    const { app } = makeApp({ demoLimits: { perAddress: 1 } });
+    await postJson(app, '/api/phone/demo', {}); // another visitor behind the same address used the one call
+    const { page, requests, storage, ledger, settle } = pageOn(app);
+    page.startButtons[0]!.click();
+    await settle();
+    expect(requests.filter((r) => r.url === ROUTES.demo)).toHaveLength(1); // 429 is not retried
+    expect(ledger.phone()).toBeNull();
+    expect(storage.data.has(STORAGE_KEY)).toBe(false);
+    expect(page.node('action-error').textContent).toBe('Could not start the demo shop. Try again.');
   });
 });

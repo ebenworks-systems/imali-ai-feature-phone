@@ -9,7 +9,7 @@ vi.mock('../../src/channels/index.js', () => ({
 }));
 import { handleText, handleUssd } from '../../src/channels/index.js';
 
-const ussdFields = { sessionId: 'ATUid_1', serviceCode: '*384*46254#', phoneNumber: '+27000001234', text: '1*45' };
+const ussdFields = { sessionId: 'ATUid_1', serviceCode: '*384*46254#', phoneNumber: '+254711000034', text: '1*45' };
 const ussdMock = vi.mocked(handleUssd);
 const textMock = vi.mocked(handleText);
 
@@ -26,7 +26,7 @@ beforeEach(() => {
 describe('POST /ussd', () => {
   it('passes sessionId, serviceCode, the normalised phone, text, now and the store to handleUssd', async () => {
     const { app, store } = makeApp();
-    const res = await postForm(app, '/ussd', { ...ussdFields, phoneNumber: '+27 00 000 1234' });
+    const res = await postForm(app, '/ussd', { ...ussdFields, phoneNumber: '+254 711 000 034' });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/plain');
     expect(await res.text()).toBe('CON Next screen');
@@ -35,7 +35,7 @@ describe('POST /ussd', () => {
     expect(arg).toMatchObject({
       sessionId: 'ATUid_1',
       serviceCode: '*384*46254#',
-      phoneNumber: '+27000001234',
+      phoneNumber: '+254711000034',
       text: '1*45',
       now: new Date('2026-11-07T10:00:00.000Z')
     });
@@ -135,7 +135,7 @@ describe('POST /ussd', () => {
       expect(errors).toHaveBeenCalledTimes(1);
       const line = JSON.parse(String(errors.mock.calls[0]![0]));
       expect(line.route).toBe('/ussd');
-      expect(line.phone).toBe('+270***34');
+      expect(line.phone).toBe('+254***34');
     }
   );
 
@@ -154,17 +154,17 @@ describe('POST /ussd', () => {
 });
 
 describe('POST /sms', () => {
-  const smsFields = { from: '+27000001234', to: '46254', text: 'sold 3 bread 45', date: '2026-11-07 12:00:00', id: 'ATXid_1' };
+  const smsFields = { from: '+254711000034', to: '46254', text: 'sold 3 bread 45', date: '2026-11-07 12:00:00', id: 'ATXid_1' };
 
   it('passes phone, text, now, the store, the pending store and the reader to handleText', async () => {
     const reader = { read: vi.fn(async () => null) };
     const { app, pending } = makeApp({ reader });
-    const res = await postForm(app, '/sms', { ...smsFields, from: '+27 00 000 1234' });
+    const res = await postForm(app, '/sms', { ...smsFields, from: '+254 711 000 034' });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/plain');
     expect(await res.text()).toBe('Saved: sale R45.');
     const arg = textMock.mock.calls[0]![0];
-    expect(arg).toMatchObject({ phone: '+27000001234', text: 'sold 3 bread 45', now: new Date('2026-11-07T10:00:00.000Z') });
+    expect(arg).toMatchObject({ phone: '+254711000034', text: 'sold 3 bread 45', now: new Date('2026-11-07T10:00:00.000Z') });
     expect(arg.pending).toBe(pending);
     // The reader is wrapped in the ceiling on model calls, so it is not the same object, but it asks the same reader.
     await arg.reader!.read('some words');
@@ -180,7 +180,7 @@ describe('POST /sms', () => {
 
   it('works without to, date and id', async () => {
     const { app } = makeApp();
-    const res = await postForm(app, '/sms', { from: '+27000001234', text: 'today' });
+    const res = await postForm(app, '/sms', { from: '+254711000034', text: 'today' });
     expect(res.status).toBe(200);
   });
 
@@ -189,7 +189,7 @@ describe('POST /sms', () => {
     const noFrom = await postForm(app, '/sms', { text: 'today' });
     expect(noFrom.status).toBe(400);
     expect(await noFrom.text()).toBe('Missing field: from.');
-    const noText = await postForm(app, '/sms', { from: '+27000001234' });
+    const noText = await postForm(app, '/sms', { from: '+254711000034' });
     expect(noText.status).toBe(400);
     expect(await noText.text()).toBe('Missing field: text.');
     const badFrom = await postForm(app, '/sms', { from: 'hello', text: 'today' });
@@ -199,7 +199,7 @@ describe('POST /sms', () => {
 
   it('accepts an empty text (the handler decides what it means)', async () => {
     const { app } = makeApp();
-    expect((await postForm(app, '/sms', { from: '+27000001234', text: '' })).status).toBe(200);
+    expect((await postForm(app, '/sms', { from: '+254711000034', text: '' })).status).toBe(200);
     expect(textMock).toHaveBeenCalledTimes(1);
   });
 
@@ -236,12 +236,13 @@ describe('POST /sms', () => {
       expect(sender.send).toHaveBeenCalledWith('+254711000000', 'Saved: sale R45.');
     });
 
-    it('sends nothing to a demo number', async () => {
+    it('sends nothing to a demo number that has a shop', async () => {
       const sender = { send: vi.fn(async () => {}) };
-      const { app } = makeApp({ smsSender: sender });
+      const { app } = await makeShopApp({ smsSender: sender });
       const res = await postForm(app, '/sms', { ...smsFields, from: '+27000001234' });
       expect(res.status).toBe(200);
-      // +27000001234 is a demo number
+      expect(await res.text()).toBe('Saved: sale R45.'); // +27000001234 is a demo number with a shop
+      expect(textMock).toHaveBeenCalledTimes(1);
       expect(sender.send).not.toHaveBeenCalled();
     });
 
@@ -307,15 +308,15 @@ describe('POST /sms', () => {
 
     it('runs again for the same id from another number', async () => {
       const { app } = makeApp();
-      await postForm(app, '/sms', { ...smsFields, from: '+27000001234' });
-      await postForm(app, '/sms', { ...smsFields, from: '+27000005678' });
+      await postForm(app, '/sms', { ...smsFields, from: '+254711000034' });
+      await postForm(app, '/sms', { ...smsFields, from: '+254711000056' });
       expect(textMock).toHaveBeenCalledTimes(2);
     });
 
     it('treats the same number written two ways as one', async () => {
       const { app } = makeApp();
-      await postForm(app, '/sms', { ...smsFields, from: '+27000001234' });
-      await postForm(app, '/sms', { ...smsFields, from: '+27 00 000 1234' });
+      await postForm(app, '/sms', { ...smsFields, from: '+254711000034' });
+      await postForm(app, '/sms', { ...smsFields, from: '+254 711 000 034' });
       expect(textMock).toHaveBeenCalledTimes(1);
     });
 

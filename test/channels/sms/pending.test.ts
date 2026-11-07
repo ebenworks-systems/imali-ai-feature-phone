@@ -76,6 +76,19 @@ describe('InMemoryPendingStore', () => {
       expect(await store.get(PHONE_B)).toEqual(large);
     });
 
+    it('clearMany removes the questions of the phones given in one call, and leaves any other phone', async () => {
+      const { store } = makeStore();
+      await store.set(PHONE_A, ambiguous);
+      await store.set(PHONE_B, large);
+      await store.set('+27000000003', large);
+      await store.clearMany([PHONE_A, '+27000000003', '+27000000009']); // the last one has no question
+      expect(await store.get(PHONE_A)).toBeNull();
+      expect(await store.get('+27000000003')).toBeNull();
+      expect(await store.get(PHONE_B)).toEqual(large);
+      await expect(store.clearMany([])).resolves.toBeUndefined();
+      expect(await store.get(PHONE_B)).toEqual(large);
+    });
+
     it('clear on a phone with no question does nothing', async () => {
       const { store } = makeStore();
       await expect(store.clear(PHONE_A)).resolves.toBeUndefined();

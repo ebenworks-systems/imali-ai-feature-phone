@@ -28,11 +28,14 @@ const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
 const DAY = 24 * HOUR;
 
-/** The invented shop. `createdAt` is the time of the oldest record. */
+/**
+ * The invented shop. `createdAt` is the time the shop is made (`now`), not the time of its oldest invented record,
+ * which is 1.6 to 2.6 days earlier: the 7-day housekeeping counts from `createdAt`, so a shop must live 7 days after
+ * a judge made it. The invented records keep their own earlier times.
+ */
 export function buildDemoShop(phone: string, now: Date): Shop {
   const shop = createShop({ name: DEMO_SHOP_NAME, phone, currency: 'ZAR', timeZone: DEMO_TIME_ZONE });
-  const oldest = buildDemoRecords(shop, now)[0];
-  return { ...shop, createdAt: oldest ? oldest.createdAt : now.toISOString() };
+  return { ...shop, createdAt: now.toISOString() };
 }
 
 /** The 17 records, in append order. */

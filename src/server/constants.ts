@@ -20,7 +20,7 @@ export const MAX_DEMO_SHOPS = 5000;
 /** Demo shops the whole site may make in 24 hours. Kept in the store. */
 export const MAX_DEMO_SHOPS_PER_DAY = 1000;
 /** Demo shops older than 7 days are removed, at most this many on each call to POST /api/phone/demo. */
-export const DEMO_SWEEP_PER_CALL = 200;
+export const DEMO_SWEEP_PER_CALL = 50;
 /** Shops on any other number (Africa's Talking sign-ups) in all, counted in the store. */
 export const MAX_OTHER_SHOPS = 2000;
 
