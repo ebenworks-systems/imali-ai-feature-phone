@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryProcessedTextStore } from '../../src/store/processed.js';
 import { SENTENCES } from '../../src/server/constants.js';
 import { captureErrors, makeApp, makeShopApp, postForm, throwingStore } from './helpers.js';
@@ -22,6 +22,9 @@ beforeEach(() => {
   textMock.mockResolvedValue({ reply: 'Saved: sale R45.' });
   errors = captureErrors();
 });
+
+// Under vitest 4 the console.error spy made in beforeEach kept the calls of the tests before it: give the real one back each time.
+afterEach(() => vi.restoreAllMocks());
 
 describe('POST /ussd', () => {
   it('passes sessionId, serviceCode, the normalised phone, text, now and the store to handleUssd', async () => {
