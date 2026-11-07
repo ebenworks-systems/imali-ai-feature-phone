@@ -48,8 +48,9 @@ ZMW and BWP), and each shop's day runs in its own time zone.
 
 When a message could mean two things, such as `sold 2 200`, the ledger asks which one before it saves. An optional
 model reader (Gemini, used only when `GEMINI_API_KEY` is set) may suggest a reading for a message the rules cannot read,
-and the ledger keeps the suggestion only if the amount and the name appear in the owner's own words. The live demo runs
-on the rules alone.
+and the ledger keeps the suggestion only if the amount and the name appear in the owner's own words. The live demo has the
+reader switched on: a message the rules cannot read is sent, as text only, to the reader, and the rules read everything
+else on their own.
 
 A repeated menu request saves once, and a repeated text callback gets the first reply again without saving anything
 new. A callback key keeps `/ussd` and `/sms` closed to anyone but the network, and the public demo limits how many demo

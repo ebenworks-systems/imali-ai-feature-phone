@@ -59,6 +59,25 @@ afterEach(() => {
 });
 
 describe('GeminiReader: the request', () => {
+  it('asks Gemini on Vertex AI, global location, in the given project, with the key still in the header only', async () => {
+    const { fetch, calls } = fakeFetch(() => geminiSays(GOOD_DEBT));
+    const reader = new GeminiReader({
+      apiKey: FAKE_KEY,
+      vertexProject: ' my-project ',
+      model: 'gemini-3.8-flash',
+      fetch
+    });
+
+    expect(await reader.read(MESSAGE)).not.toBeNull();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(
+      'https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3.8-flash:generateContent'
+    );
+    expect(calls[0].url).not.toContain(FAKE_KEY);
+    expect(calls[0].init.headers['x-goog-api-key']).toBe(FAKE_KEY);
+  });
+
   it('calls the generateContent endpoint once, with the key in the x-goog-api-key header and never in the URL', async () => {
     const { fetch, calls } = fakeFetch(() => geminiSays(GOOD_DEBT));
     const reader = new GeminiReader({ apiKey: FAKE_KEY, fetch });

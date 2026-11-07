@@ -6,8 +6,11 @@
  * against the owner's own words before anything is recorded.
  *
  * GeminiReader asks Google Gemini through its REST API with `fetch`. It is used only when GEMINI_API_KEY is
- * set, and every failure (timeout, bad answer, network error) gives null, never an exception. It never logs
- * or returns the key or the owner's message, and the key goes in a header, never in the URL.
+ * set. With GEMINI_VERTEX_PROJECT also set it asks Gemini on Google Cloud (Vertex AI, global location) in that
+ * project, so the call is billed to the project's own Cloud billing account instead of the Gemini API's prepaid
+ * balance; the request and the answer have the same shape. Every failure (timeout, bad answer, network error) gives
+ * null, never an exception. It never logs or returns the key or the owner's message, and the key goes in a header,
+ * never in the URL.
  */
 
 import type { Intent } from '../channels/sms/reader.js';
@@ -47,6 +50,8 @@ export type FetchLike = (url: string, init: FetchInitLike) => Promise<FetchRespo
 
 export interface GeminiReaderOptions {
   apiKey: string;
+  /** A Google Cloud project id: ask Gemini on Vertex AI (global location) in that project. Unset: the Gemini API. */
+  vertexProject?: string;
   /** Defaults to "gemini-2.5-flash". */
   model?: string;
   /** How long to wait for the answer. Defaults to 4000 ms. */
@@ -63,6 +68,7 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 export const DEFAULT_GEMINI_TIMEOUT_MS = 4000;
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const VERTEX_ENDPOINT = 'https://aiplatform.googleapis.com/v1/projects';
 
 const KINDS = ['sale', 'expense', 'debt', 'payment'] as const;
 type ProposedKind = (typeof KINDS)[number];
@@ -98,6 +104,7 @@ export class GeminiReader implements ModelReader {
   // An ES private field: it does not show up in JSON.stringify(reader), console.log(reader) or a heap dump of the object.
   readonly #apiKey: string;
   private readonly model: string;
+  private readonly vertexProject: string | undefined;
   private readonly timeoutMs: number;
   private readonly fetchFn: FetchLike | undefined;
 
@@ -107,6 +114,7 @@ export class GeminiReader implements ModelReader {
     }
     this.#apiKey = options.apiKey;
     this.model = options.model?.trim() || DEFAULT_GEMINI_MODEL;
+    this.vertexProject = options.vertexProject?.trim() || undefined;
     this.timeoutMs =
       typeof options.timeoutMs === 'number' && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
         ? options.timeoutMs
@@ -149,7 +157,10 @@ export class GeminiReader implements ModelReader {
   }
 
   private async callGemini(text: string, signal: AbortSignal): Promise<Proposal | null> {
-    const url = `${ENDPOINT}/${encodeURIComponent(this.model)}:generateContent`;
+    const model = encodeURIComponent(this.model);
+    const url = this.vertexProject
+      ? `${VERTEX_ENDPOINT}/${encodeURIComponent(this.vertexProject)}/locations/global/publishers/google/models/${model}:generateContent`
+      : `${ENDPOINT}/${model}:generateContent`;
     const generationConfig: Record<string, unknown> = {
       temperature: 0,
       responseMimeType: 'application/json',

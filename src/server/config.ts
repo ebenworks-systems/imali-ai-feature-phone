@@ -10,6 +10,8 @@ export interface ServerConfig {
   geminiApiKey?: string;
   /** GEMINI_MODEL. Used only when `geminiApiKey` is set. */
   geminiModel?: string;
+  /** GEMINI_VERTEX_PROJECT. Used only when `geminiApiKey` is set: ask Gemini on Vertex AI in this Google Cloud project. */
+  geminiVertexProject?: string;
   at?: { username: string; apiKey: string; shortcode: string };
   /** AT_CALLBACK_KEY: when set, POST /ussd and POST /sms need `?k=<this>`. */
   callbackKey?: string;
@@ -44,6 +46,7 @@ export function readConfig(env: Env): ServerConfig {
   const databaseUrl = clean(env.DATABASE_URL);
   const geminiApiKey = clean(env.GEMINI_API_KEY);
   const geminiModel = clean(env.GEMINI_MODEL);
+  const geminiVertexProject = clean(env.GEMINI_VERTEX_PROJECT);
   const username = clean(env.AT_USERNAME);
   const apiKey = clean(env.AT_API_KEY);
   const shortcode = clean(env.AT_SHORTCODE) ?? DEFAULT_SHORTCODE;
@@ -69,6 +72,7 @@ export function readConfig(env: Env): ServerConfig {
     ...(databaseUrl ? { databaseUrl } : {}),
     ...(geminiApiKey ? { geminiApiKey } : {}),
     ...(geminiModel ? { geminiModel } : {}),
+    ...(geminiVertexProject ? { geminiVertexProject } : {}),
     ...(username && apiKey ? { at: { username, apiKey, shortcode } } : {}),
     ...(callbackKey ? { callbackKey } : {}),
     ...(callbacksMissingKey ? { callbacksMissingKey: true as const } : {}),

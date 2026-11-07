@@ -3,7 +3,8 @@
  * `config.ts` and `main.ts`) that knows what the variables mean, so route tests never depend on the machine.
  *
  * - DATABASE_URL set: Postgres store, pending store and processed-text store. Not set: the memory ones.
- * - GEMINI_API_KEY set: a Gemini reader (model from GEMINI_MODEL when that is set). Not set: no reader.
+ * - GEMINI_API_KEY set: a Gemini reader (model from GEMINI_MODEL, Vertex AI project from GEMINI_VERTEX_PROJECT, when set).
+ *   Not set: no reader.
  * - AT_USERNAME and AT_API_KEY set: an Africa's Talking sender (from AT_SHORTCODE, default 46254; the sandbox host
  *   when AT_USERNAME is `sandbox`). Not set: no sender.
  * - AT_CALLBACK_KEY set: POST /ussd and POST /sms need `?k=<the key>`.
@@ -86,6 +87,7 @@ export function createAppFromEnv(
     ? new GeminiReader({
         apiKey: config.geminiApiKey,
         ...(config.geminiModel ? { model: config.geminiModel } : {}),
+        ...(config.geminiVertexProject ? { vertexProject: config.geminiVertexProject } : {}),
         ...(overrides.fetch ? { fetch: overrides.fetch } : {})
       })
     : undefined;
@@ -110,7 +112,7 @@ export function createAppFromEnv(
 
   const sms = config.at ? (config.at.username === 'sandbox' ? 'sandbox' : 'live') : 'off';
   const summary =
-    `store=${config.databaseUrl ? 'postgres' : 'memory'} gemini=${reader ? 'on' : 'off'} ` +
+    `store=${config.databaseUrl ? 'postgres' : 'memory'} gemini=${reader ? (config.geminiVertexProject ? 'vertex' : 'on') : 'off'} ` +
     `sms=${sms} callback=${config.callbackKey ? 'key' : config.callbacksMissingKey ? 'missing-key' : 'open'} ` +
     `salt=${config.addressSalt ? 'set' : 'default'}`;
 

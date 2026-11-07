@@ -51,6 +51,7 @@ describe('package.json and .gitignore (requirements 6 and 96)', () => {
       'DATABASE_URL=',
       'GEMINI_API_KEY=',
       'GEMINI_MODEL=',
+      'GEMINI_VERTEX_PROJECT=',
       'AT_USERNAME=',
       'AT_API_KEY=',
       'AT_SHORTCODE=',

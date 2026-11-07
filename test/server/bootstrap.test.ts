@@ -83,6 +83,20 @@ describe('the Gemini reader', () => {
     expect(started.summary).toContain('gemini=on');
   });
 
+  it('says gemini=vertex in the start line when GEMINI_VERTEX_PROJECT is also set', () => {
+    const started = createAppFromEnv({ GEMINI_API_KEY: KEY, GEMINI_VERTEX_PROJECT: 'proj-1' });
+    expect(started.parts.reader).toBeInstanceOf(GeminiReader);
+    expect(started.summary).toContain('gemini=vertex');
+  });
+
+  it('sends the reader\'s calls to Vertex AI in that project when GEMINI_VERTEX_PROJECT is set', async () => {
+    const { fetch, calls } = fakeFetch(() => new Response('{}', { status: 200 }));
+    const started = createAppFromEnv({ GEMINI_API_KEY: KEY, GEMINI_VERTEX_PROJECT: 'proj-1' }, { fetch });
+    await started.parts.reader!.read('zzzz qqqq');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url.startsWith('https://aiplatform.googleapis.com/v1/projects/proj-1/locations/global/')).toBe(true);
+  });
+
   it('is not built when only GEMINI_MODEL is set', async () => {
     const { fetch, calls } = fakeFetch(() => new Response('{}'));
     const started = createAppFromEnv({ GEMINI_MODEL: 'gemini-test-model' }, { fetch });

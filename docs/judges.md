@@ -12,7 +12,8 @@ browser's device mode.
 2. For a clean first visit, clear this site's stored data: in DevTools open Application, then Local Storage, then
    delete the key `imali-demo-phone`. Or open the page in a private window.
 3. Keep DevTools open on the Network tab. The only request to another site should be Google Fonts. Nothing else
-   should leave the page.
+   should leave the page. (The server, not the page, may send a message that the fixed rules cannot read to the
+   optional model reader; you will not see that in the browser.)
 
 ## 2. At 1280 px wide (laptop)
 

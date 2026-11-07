@@ -104,6 +104,7 @@ server tries up to 20 free numbers, so the page never picks a number or retries 
 | `DATABASE_URL` | Postgres connection string (Neon) | records stay in memory |
 | `GEMINI_API_KEY` | Turns on the optional model reader for messages the fixed rules cannot read | rules only |
 | `GEMINI_MODEL` | Model name for the reader. Used only when `GEMINI_API_KEY` is set | the reader's own default |
+| `GEMINI_VERTEX_PROJECT` | A Google Cloud project id. Used only when `GEMINI_API_KEY` is set: the reader then asks Gemini on Vertex AI in that project (global location), so the call is billed to the project's Cloud billing account. `GEMINI_API_KEY` is then a Google Cloud API key tied to a service account that may use Vertex AI | the Gemini API |
 | `AT_USERNAME` | Africa's Talking app name. `sandbox` uses the sandbox host | no text replies are sent |
 | `AT_API_KEY` | Africa's Talking API key | no text replies are sent |
 | `AT_SHORTCODE` | Short code that text replies come from | `46254` (the sandbox short code) |
@@ -188,7 +189,7 @@ Use the direct string, not the pooled one, for the migration.
 1. Import the repository in Vercel. Leave the framework as **Other**. Vercel reads `vercel.json`, serves `public/` as
    static files and sends `/ussd`, `/sms`, `/health` and `/api/*` to the function in `api/index.ts`.
 2. Add the environment variables: `DATABASE_URL`, `ADDRESS_SALT` (a long random string), and if you want them
-   `GEMINI_API_KEY`, `GEMINI_MODEL`, `AT_USERNAME`, `AT_API_KEY`, `AT_SHORTCODE` and `AT_CALLBACK_KEY`. Set
+   `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_VERTEX_PROJECT`, `AT_USERNAME`, `AT_API_KEY`, `AT_SHORTCODE` and `AT_CALLBACK_KEY`. Set
    `AT_CALLBACK_KEY` whenever you set `AT_USERNAME` and `AT_API_KEY` (see "The callback key").
 3. Pick a function region near your Neon region.
 4. If this deploy adds a file in `sql/`, run `npm run db:migrate` against the direct connection string first (see
@@ -262,7 +263,7 @@ No answer ever holds a stack trace, a database message or a connection string.
 - `POST /api/phone/demo` creates a shop, and its rows appear in Neon.
 - `POST /ussd` with the form fields above answers `CON ...`. With `AT_CALLBACK_KEY` set, it answers `403` without
   `?k=` and `CON ...` with it.
-- The runtime log shows one start line such as `store=postgres gemini=off sms=sandbox callback=key salt=set`, and no
-  secret. `callback=missing-key` means `/ussd` and `/sms` are answering `503`; `salt=default` means `ADDRESS_SALT` is not set.
+- The runtime log shows one start line such as `store=postgres gemini=vertex sms=sandbox callback=key salt=set`, and no
+  secret. `gemini=vertex` means the model reader asks Gemini on Vertex AI, `gemini=on` the Gemini API, `gemini=off` that the rules read alone. `callback=missing-key` means `/ussd` and `/sms` are answering `503`; `salt=default` means `ADDRESS_SALT` is not set.
 - A request to `/sms` reaches the function with the path `/sms`. The rewrite in `vercel.json` should keep the original
   path. If it does not, see "Risks and known gaps" in `.kiro/specs/server-and-store/design.md` for the fallbacks.

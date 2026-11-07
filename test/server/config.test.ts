@@ -21,10 +21,16 @@ describe('readConfig', () => {
   });
 
   it('reads the database url and the Gemini variables, trimmed', () => {
-    const config = readConfig({ DATABASE_URL: ' db-url ', GEMINI_API_KEY: ' gk ', GEMINI_MODEL: ' gemini-x ' });
+    const config = readConfig({
+      DATABASE_URL: ' db-url ',
+      GEMINI_API_KEY: ' gk ',
+      GEMINI_MODEL: ' gemini-x ',
+      GEMINI_VERTEX_PROJECT: ' proj-1 '
+    });
     expect(config.databaseUrl).toBe('db-url');
     expect(config.geminiApiKey).toBe('gk');
     expect(config.geminiModel).toBe('gemini-x');
+    expect(config.geminiVertexProject).toBe('proj-1');
   });
 
   it('gives the sender settings when both AT variables are set, with the sandbox short code 46254', () => {
