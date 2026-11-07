@@ -43,8 +43,8 @@ one thumb on a keypad phone. English may be a second or third language. The ledg
 ## Handing over to Imali AI
 
 When an owner moves to a smartphone, the ledger exports every record in an open, documented JSON format
-(`docs/export-format.md`). Imali AI, the company's WhatsApp business assistant, can import that file. The import
-lives in Imali AI's own code, not in this repository. Always write the name as "Imali AI", never "Imali".
+(`docs/export-format.md`), so the books go with the owner. No version of Imali AI imports that file today, so no text
+in this repository says it can. Always write the name as "Imali AI", never "Imali".
 
 ## Demo data is invented
 
