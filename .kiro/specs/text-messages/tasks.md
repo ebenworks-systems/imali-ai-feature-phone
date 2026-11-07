@@ -20,39 +20,39 @@
 
 ## Pending Store Module
 
-- [ ] Create `src/channels/sms/pending.ts` with PendingStore interface, PendingQuestion type supporting 'ambiguous' and 'largeAmount' kinds.
+- [x] Create `src/channels/sms/pending.ts` with PendingStore interface, PendingQuestion type supporting 'ambiguous' and 'largeAmount' kinds.
 
-- [ ] Implement InMemoryPendingStore with get(), set(), clear() methods and 10-minute TTL expiry (requirement 29); cleanup expired entries on get().
+- [x] Implement InMemoryPendingStore with get(), set(), clear() methods and 10-minute TTL expiry (requirement 29); cleanup expired entries on get().
 
-- [ ] Write unit tests for InMemoryPendingStore: set/get/clear, expiry detection, cleanup (test/channels/sms/pending.test.ts).
+- [x] Write unit tests for InMemoryPendingStore: set/get/clear, expiry detection, cleanup (test/channels/sms/pending.test.ts).
 
 ## Replies Module
 
-- [ ] Create `src/channels/sms/replies.ts` with ReplyContext type and buildReply(context, maxLength?) function.
+- [x] Create `src/channels/sms/replies.ts` with ReplyContext type and buildReply(context, maxLength?) function.
 
-- [ ] Implement sale reply building: "Saved: sale R45 (3 bread). Sales today R1,285. Reply undo to cancel." (requirement 31); handle optional quantity and item trimming if needed.
+- [x] Implement sale reply building: "Saved: sale R45 (3 bread). Sales today R1,285. Reply undo to cancel." (requirement 31); handle optional quantity and item trimming if needed.
 
-- [ ] Implement expense reply building: "Saved: spent R120 (transport). Spent today R300." (requirement 32); handle optional item.
+- [x] Implement expense reply building: "Saved: spent R120 (transport). Spent today R300." (requirement 32); handle optional item.
 
-- [ ] Implement debt reply building: "Saved: Tendai owes R20 (sugar). Tendai owes R50 in total." (requirement 33); handle optional item.
+- [x] Implement debt reply building: "Saved: Tendai owes R20 (sugar). Tendai owes R50 in total." (requirement 33); handle optional item.
 
-- [ ] Implement payment reply building for normal and credit cases: "Saved: Tendai paid R10. Tendai owes R40 now." and credit variant (requirement 34).
+- [x] Implement payment reply building for normal and credit cases: "Saved: Tendai paid R10. Tendai owes R40 now." and credit variant (requirement 34).
 
-- [ ] Implement undo reply building: "Undone: sale R45 (bread). Sales today R1,240." for successful undo and "Nothing to undo." for no reversible record (requirement 35–36).
+- [x] Implement undo reply building: "Undone: sale R45 (bread). Sales today R1,240." for successful undo and "Nothing to undo." for no reversible record (requirement 35–36).
 
-- [ ] Implement today reply: "Today: sales R1,240 (12), spent R300, in hand R940." with totals (requirement 37).
+- [x] Implement today reply: "Today: sales R1,240 (12), spent R300, in hand R940." with totals (requirement 37).
 
-- [ ] Implement who owes reply: "Owes: Tendai R50, Rudo R30, ..." sorted descending, "+N more. Reply owes 2" when needed, "Nobody owes you money." when empty (requirement 38).
+- [x] Implement who owes reply: "Owes: Tendai R50, Rudo R30, ..." sorted descending, "+N more. Reply owes 2" when needed, "Nobody owes you money." when empty (requirement 38).
 
-- [ ] Implement balance reply: "Tendai owes R40." or "Tendai has R5 credit." when negative (requirement 39).
+- [x] Implement balance reply: "Tendai owes R40." or "Tendai has R5 credit." when negative (requirement 39).
 
-- [ ] Implement close reply: "Close Mon 3 Nov: sales R1,240 (12), spent R300, in hand R940, credit given R70, paid back R40, total owed R380." with day name and date (requirement 40).
+- [x] Implement close reply: "Close Mon 3 Nov: sales R1,240 (12), spent R300, in hand R940, credit given R70, paid back R40, total owed R380." with day name and date (requirement 40).
 
-- [ ] Implement help and unknown reply: "Sorry, I did not get that. Try: sold 45 bread, spent 20 taxi, Tendai owes 30, today, who owes." (requirement 41).
+- [x] Implement help and unknown reply: "Sorry, I did not get that. Try: sold 45 bread, spent 20 taxi, Tendai owes 30, today, who owes." (requirement 41).
 
-- [ ] Add trimming logic to buildReply(): drop hint first, then item, to stay within 160 characters (requirement 43); validate all replies are ASCII only (requirement 42).
+- [x] Add trimming logic to buildReply(): drop hint first, then item, to stay within 160 characters (requirement 43); validate all replies are ASCII only (requirement 42).
 
-- [ ] Write unit tests for buildReply() covering all operation types with exact wording, character limits, and ASCII validation (test/channels/sms/replies.test.ts).
+- [x] Write unit tests for buildReply() covering all operation types with exact wording, character limits, and ASCII validation (test/channels/sms/replies.test.ts).
 
 ## Model Reader Module
 
