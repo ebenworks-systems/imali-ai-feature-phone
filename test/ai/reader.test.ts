@@ -98,8 +98,8 @@ describe('GeminiReader: the request', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('defaults to gemini-2.5-flash and a 4000 ms timeout', () => {
-    expect(DEFAULT_GEMINI_MODEL).toBe('gemini-2.5-flash');
+  it('defaults to gemini-3.5-flash-lite and a 4000 ms timeout', () => {
+    expect(DEFAULT_GEMINI_MODEL).toBe('gemini-3.5-flash-lite');
     expect(DEFAULT_GEMINI_TIMEOUT_MS).toBe(4000);
   });
 
@@ -125,7 +125,6 @@ describe('GeminiReader: the request', () => {
       'payment',
       'none'
     ]);
-    expect(body.generationConfig.temperature).toBe(0);
     expect(body.contents).toEqual([{ role: 'user', parts: [{ text: MESSAGE }] }]);
   });
 
@@ -144,14 +143,29 @@ describe('GeminiReader: the request', () => {
     expect(instructions).not.toContain(MESSAGE);
   });
 
-  it('turns thinking off for Gemini 2.5 Flash only', async () => {
-    const flash = fakeFetch(() => geminiSays(GOOD_DEBT));
-    await new GeminiReader({ apiKey: FAKE_KEY, fetch: flash.fetch }).read(MESSAGE);
-    expect(JSON.parse(flash.calls[0].init.body).generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+  it('sends no sampling parameter and no thinking budget to Gemini 3 and later (Google refuses them from 1 Dec 2026)', async () => {
+    for (const model of [undefined, 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-test-model']) {
+      const { fetch, calls } = fakeFetch(() => geminiSays(GOOD_DEBT));
+      await new GeminiReader({ apiKey: FAKE_KEY, model, fetch }).read(MESSAGE);
+      const config = JSON.parse(calls[0].init.body).generationConfig;
+      expect(config.temperature).toBeUndefined();
+      expect(config.thinkingConfig).toBeUndefined();
+      expect(config.responseMimeType).toBe('application/json');
+    }
+  });
 
-    const other = fakeFetch(() => geminiSays(GOOD_DEBT));
-    await new GeminiReader({ apiKey: FAKE_KEY, model: 'gemini-test-model', fetch: other.fetch }).read(MESSAGE);
-    expect(JSON.parse(other.calls[0].init.body).generationConfig.thinkingConfig).toBeUndefined();
+  it('still asks Gemini 2.5 for temperature 0, and 2.5 Flash for no thinking', async () => {
+    const flash = fakeFetch(() => geminiSays(GOOD_DEBT));
+    await new GeminiReader({ apiKey: FAKE_KEY, model: 'gemini-2.5-flash', fetch: flash.fetch }).read(MESSAGE);
+    const config = JSON.parse(flash.calls[0].init.body).generationConfig;
+    expect(config.temperature).toBe(0);
+    expect(config.thinkingConfig).toEqual({ thinkingBudget: 0 });
+
+    const pro = fakeFetch(() => geminiSays(GOOD_DEBT));
+    await new GeminiReader({ apiKey: FAKE_KEY, model: 'gemini-2.5-pro', fetch: pro.fetch }).read(MESSAGE);
+    const proConfig = JSON.parse(pro.calls[0].init.body).generationConfig;
+    expect(proConfig.temperature).toBe(0);
+    expect(proConfig.thinkingConfig).toBeUndefined();
   });
 
   it('uses the global fetch when none is passed', async () => {

@@ -52,7 +52,7 @@ export interface GeminiReaderOptions {
   apiKey: string;
   /** A Google Cloud project id: ask Gemini on Vertex AI (global location) in that project. Unset: the Gemini API. */
   vertexProject?: string;
-  /** Defaults to "gemini-2.5-flash". */
+  /** Defaults to "gemini-3.5-flash-lite". */
   model?: string;
   /** How long to wait for the answer. Defaults to 4000 ms. */
   timeoutMs?: number;
@@ -64,7 +64,8 @@ export interface GeminiReaderOptions {
 // GeminiReader
 // ============================================================================
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+// Google routes gemini-2.5-flash to gemini-3.5-flash-lite from 1 December 2026, so the reader names it now.
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 export const DEFAULT_GEMINI_TIMEOUT_MS = 4000;
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -162,11 +163,16 @@ export class GeminiReader implements ModelReader {
       ? `${VERTEX_ENDPOINT}/${encodeURIComponent(this.vertexProject)}/locations/global/publishers/google/models/${model}:generateContent`
       : `${ENDPOINT}/${model}:generateContent`;
     const generationConfig: Record<string, unknown> = {
-      temperature: 0,
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA
     };
-    // Gemini 2.5 Flash thinks before answering unless told not to, which can use up the 4 seconds.
+    // Gemini 3 and later refuse the sampling parameters (temperature, top_p, top_k) and have no thinking budget:
+    // thinking_level replaces it, and Flash-Lite's default, minimal, is what a four-second read needs. Only the
+    // older models still get temperature 0, and Gemini 2.5 Flash thinks before answering unless told not to,
+    // which can use up the 4 seconds.
+    if (/^gemini-[12]\./.test(this.model)) {
+      generationConfig.temperature = 0;
+    }
     if (this.model.startsWith('gemini-2.5-flash')) {
       generationConfig.thinkingConfig = { thinkingBudget: 0 };
     }

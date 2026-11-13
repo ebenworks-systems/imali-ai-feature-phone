@@ -127,7 +127,7 @@ describe('the Gemini reader', () => {
     const started = createAppFromEnv({ GEMINI_API_KEY: KEY }, { fetch });
     await started.app.request('/api/phone/demo', { method: 'POST', body: JSON.stringify({ phone: '+27000001234' }) });
     await started.app.request('/api/phone/sms', { method: 'POST', body: JSON.stringify({ phone: '+27000001234', text: 'zzzz qqqq wwww' }) });
-    expect(calls[0]!.url).toContain('/models/gemini-2.5-flash:generateContent');
+    expect(calls[0]!.url).toContain('/models/gemini-3.5-flash-lite:generateContent');
   });
 });
 
