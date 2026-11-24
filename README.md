@@ -2,9 +2,8 @@
 
 Imali AI: Africa's smartest AI Business OS.
 
-Imali AI runs sales, stock and books on WhatsApp for shop owners and merchants, along with their suppliers, their
-funders and groups of companies. This open-source companion keeps a shop's books for owners whose phones cannot run
-WhatsApp. The owner dials a short code or sends a plain text message such
+Imali AI runs the books, stock and sales of shops, suppliers and company groups. This open-source companion keeps a
+shop's books for owners whose phones cannot run WhatsApp. The owner dials a short code or sends a plain text message such
 as `sold 3 bread 45` or `Tendai owes 20 sugar`. The ledger saves the sale, expense, credit or payment in whole cents and
 replies with the new figure. It works on any phone that can dial a code or send a text, without a data bundle or an
 app. The ledger exports every record as one JSON file in an open format, documented in
@@ -12,7 +11,8 @@ app. The ledger exports every record as one JSON file in an open format, documen
 
 **Live demo:** https://imali-ai-feature-phone.vercel.app
 
-Kiro wrote the application code from the steering, specs and hooks in `.kiro/`. This repository is our entry for
+Kiro wrote the application code from the steering, specs and hooks in `.kiro/`. Three later changes to the code
+and its tests were made by hand, outside Kiro; `docs/built-with-kiro.md` lists them. This repository is our entry for
 Kiroween 2026 in the Resurrection category: the keypad phone and its dialled menus, brought back to keep a shop's books.
 
 ## Try the demo
@@ -47,10 +47,9 @@ Amounts are whole cents from the moment they are read. The ledger supports seven
 ZMW and BWP), and each shop's day runs in its own time zone.
 
 When a message could mean two things, such as `sold 2 200`, the ledger asks which one before it saves. An optional
-model reader (Gemini, used only when `GEMINI_API_KEY` is set) may suggest a reading for a message the rules cannot read,
-and the ledger keeps the suggestion only if the amount and the name appear in the owner's own words. The live demo has the
-reader switched on: a message the rules cannot read is sent, as text only, to the reader, and the rules read everything
-else on their own.
+model reader, off unless it is set up (`docs/run-the-demo.md` lists the settings), may suggest a reading for a message the
+rules cannot read, and the ledger keeps the suggestion only if the amount and the name appear in the owner's own words.
+The live demo has the reader switched on. The rules read every message they can without it.
 
 A repeated menu request saves once, and a repeated text callback gets the first reply again without saving anything
 new. A callback key keeps `/ussd` and `/sms` closed to anyone but the network, and the public demo limits how many demo

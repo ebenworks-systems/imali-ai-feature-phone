@@ -2,7 +2,8 @@
 
 Kiro wrote the application code in this repository: the ledger core, the text-message reader and handler, the dialled
 menu, the server and its Postgres store, and the browser phone. We wrote the steering files, the briefs that started
-each spec, and the reviews. Every change came back to Kiro as a new task; we did not edit its code by hand.
+each spec, and the reviews, and every fault our reviews found went back to Kiro as a new task. After the build we also
+changed the model reader and some tests by hand, outside Kiro; "Changes made outside Kiro" below lists each one.
 
 ## The set-up
 
@@ -13,10 +14,8 @@ finished:
 kiro-cli --v3 chat --no-interactive --trust-all-tools --trust-workspace --model <model> "<the brief>"
 ```
 
-`--trust-workspace` matters. Our first runs left it out and showed no hook output at all. With it, the "typecheck and
-tests on stop" hook ran when Kiro finished, and Kiro answered its report: in one run it pointed out that the one failing
-test was a fault it had already reported, and in another it found the packages missing, installed them and ran the
-checks again.
+`--trust-workspace` matters. Our first runs left it out and showed no hook output at all. With it, Kiro loads the
+folder's `.kiro/hooks`, so the "typecheck and tests on stop" hook runs when Kiro finishes.
 
 The four steering files carry the rules that never change between tasks: who the shop owner is and what a reply must
 sound like (`product.md`), money as whole cents and records that are only ever added (`money-and-records.md`), the
@@ -25,8 +24,10 @@ sound like (`product.md`), money as whole cents and records that are only ever a
 ## Spec by spec
 
 Each feature went through the same loop: a brief from us, a spec from Kiro (requirements, design, tasks), our review of
-the spec, Kiro's revision, then a build run in which Kiro worked through the task list and ticked each task. The counts below
-are the ticked tasks in each spec's `tasks.md` on 8 November 2026.
+the spec, Kiro's revision, then a build run in which Kiro worked through the task list and ticked each task. The counts
+below are the ticked tasks in each spec's `tasks.md`; every task is ticked, on 8 November 2026 and on 24 November 2026. Four of the 69
+`server-and-store` tasks (9.3, 9.4, 11.9 and 12.8) need a person with access to the test database or the deploy account. We
+did those steps and ticked them.
 
 | Spec | Tasks ticked | What it built |
 |---|---|---|
@@ -53,9 +54,10 @@ first:
 
 Kiro found faults in its own work too. On 7 November 2026, while building the dialled menu, it reported that
 `sold 45 bread`, the example our help reply gives, saved the sale without the item, and that the shop's day began about
-0.4 seconds late because its search for the start of the day stopped at one second. In the server build the same day it
-ran a stress test of simultaneous saves, measured about 2 in 100 pairs failing on the wrong index, and fixed the store
-to report the duplicate correctly. Both figures are Kiro's own, from its run reports.
+0.4 seconds late because its search for the start of the day stopped at one second (`docs/kiro-briefs/13-fixes-reader-daybounds-page-money.md`
+and task notes in `.kiro/specs/ledger-core/tasks.md` record both). In the server build the same day it ran a stress test of
+simultaneous saves and fixed the store to report a duplicate correctly; the Postgres tests include two reversals of one
+record inserted together, of which only one wins.
 
 One run ended in the middle of a mutation check and left two guards removed from `src/ai/check.ts`; a later test
 looped forever on an empty search string. We sent it back, Kiro restored both guards and added tests that fail if
@@ -66,24 +68,40 @@ code.
 
 On Kiro Free, on 3 November 2026, we tried three models on the first specs. DeepSeek 3.2 wrote the first spec, Qwen3 Coder Next looped on a
 wrong test, and Claude Haiku 4.5 finished six to eight tasks a batch for 2 to 5 credits, by Kiro's `/usage` readings that day. With the Kiroween credits, Claude
-Sonnet 5.5 built each remaining spec in one run of 20 to 50 minutes (from the run logs of 7 November). By the night of 7 to
+Sonnet 5.5 built each remaining spec in one run of 20 to 50 minutes (7 November). By the night of 7 to
 8 November 2026 the whole build had used 46.71 of Kiro Free's 50 monthly credits and 608.21 of the 4,000 Kiroween
-credits, as Kiro's own `/usage` reported them.
+credits on our Kiro account, as Kiro's own `/usage` reported them.
 
 ## The second review
 
-Before the demo went public, a second reviewer who had not read the briefs read the server, the store and the page the
-way an attacker would. Its six findings were about the demo limits, how long demo shops last, the callback key, how a
-menu session finds its shop, and one case of the text reader (`sold 45 3 bread` lost its item after the owner answered
-the question). Kiro fixed all six in one run (brief 51), each with a test that failed first.
+Before the demo went public, a second reviewer who had not read the briefs read the server, the store and the page.
+Its six findings were about the demo's limits and expiry, the callback key, how a menu session finds its shop, and one
+case of the text reader (`sold 45 3 bread` lost its item after the owner answered the question). Kiro fixed all six in
+one run (brief 51), each with a test that failed first.
 
-A second round read only that fix and found seven smaller gaps in the same areas, such as every IPv6 address counting as
-a separate visitor, and a demo shop's start date being set to the date of its oldest record, so it expired about two
-days early. Kiro closed all seven in brief 52, and a third round read that fix and found nothing left. The full suite,
-run against a Postgres test database on 8 November 2026, passed 2,178 tests with none skipped.
+A second round read only that fix and found seven smaller gaps in the same areas, such as how visitors are counted and when a demo
+shop expires. Kiro closed all seven in brief 52, and a third round read that fix and found nothing left. The full suite,
+run against a Postgres test database on 8 November 2026, passed 2,178 tests. After the later changes below the suite has
+2,182 tests; on 24 November 2026 the 2,073 that need no database passed and the 109 Postgres tests were skipped, because
+the test database was out of reach that day.
 
 ## The briefs
 
 The briefs we gave Kiro from 7 November 2026, the second build day, are in `docs/kiro-briefs/`, so you can read what
 each run was asked to do. The first day's briefs (steering, the ledger core and the start of the text-message
 spec) were not kept.
+
+## Changes made outside Kiro
+
+Everything under `src/`, `public/`, `api/`, `sql/`, `scripts/` and `test/` was written by Kiro, except the three commits below. Our
+team made them by hand after the build. The commits are in the history, so you can read the diffs.
+
+| Commit | Date | What it changed |
+|---|---|---|
+| `d06ae61` | 8 November 2026 | Moved the test tools to vite 6.4.5 and vitest 4.1.12 to close four security alerts. In `test/server/routes.at.test.ts`, one line gives the console spy back after each test, because vitest 4 kept the calls of earlier tests. No change under `src/`. |
+| `7cb5289` | 8 November 2026 | The model reader can use a second, account-based route to its model. About 22 lines in `src/ai/reader.ts`, `src/server/config.ts` and `src/server/bootstrap.ts`, 41 lines of tests, and the matching lines in the README, `docs/judges.md`, `docs/run-the-demo.md` and `.env.example`. |
+| `e5e6346` | 13 November 2026 | The reader's default model and its request settings were updated for the model's newer versions, which refuse two of the settings it sent. About 10 lines in `src/ai/reader.ts` and changed tests. |
+
+Other files that Kiro did not write: the steering text (ours; `bccca47` corrects one line in it), the dependency bumps
+(`e3c921b`, `16449f6`), the licence and README (`e056e23`, `72d5346`), the CI workflow
+(`503ceac`, `ebcd42f`), the ticks on the four tasks named above (`7e6d80d` for 9.4) and `.gitignore` (`4be4b80`).
