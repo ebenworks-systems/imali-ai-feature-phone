@@ -6,3 +6,5 @@ coverage
 !.env.example
 *.tsbuildinfo
 .vercel
+*.log
+.DS_Store
