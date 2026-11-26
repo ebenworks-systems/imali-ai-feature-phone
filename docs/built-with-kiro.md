@@ -3,7 +3,7 @@
 Kiro wrote the application code in this repository: the ledger core, the text-message reader and handler, the dialled
 menu, the server and its Postgres store, and the browser phone. We wrote the steering files, the briefs that started
 each spec, and the reviews, and every fault our reviews found went back to Kiro as a new task. After the build we also
-changed the model reader and some tests by hand, outside Kiro; "Changes made outside Kiro" below lists each one.
+changed the model reader, the page's fonts and some tests by hand, outside Kiro; "Changes made outside Kiro" below lists each one.
 
 ## The set-up
 
@@ -82,8 +82,7 @@ one run (brief 51), each with a test that failed first.
 A second round read only that fix and found seven smaller gaps in the same areas, such as how visitors are counted and when a demo
 shop expires. Kiro closed all seven in brief 52, and a third round read that fix and found nothing left. The full suite,
 run against a Postgres test database on 8 November 2026, passed 2,178 tests. After the later changes below the suite has
-2,182 tests; on 24 November 2026 the 2,073 that need no database passed and the 109 Postgres tests were skipped, because
-the test database was out of reach that day.
+2,183 tests, and on 26 November 2026 all of them passed, the 109 Postgres tests against a local Postgres 16 database.
 
 ## The briefs
 
@@ -93,7 +92,7 @@ spec) were not kept.
 
 ## Changes made outside Kiro
 
-Everything under `src/`, `public/`, `api/`, `sql/`, `scripts/` and `test/` was written by Kiro, except the three commits below. Our
+Everything under `src/`, `public/`, `api/`, `sql/`, `scripts/` and `test/` was written by Kiro, except the four commits below. Our
 team made them by hand after the build. The commits are in the history, so you can read the diffs.
 
 | Commit | Date | What it changed |
@@ -101,6 +100,7 @@ team made them by hand after the build. The commits are in the history, so you c
 | `d06ae61` | 8 November 2026 | Moved the test tools to vite 6.4.5 and vitest 4.1.12 to close four security alerts. In `test/server/routes.at.test.ts`, one line gives the console spy back after each test, because vitest 4 kept the calls of earlier tests. No change under `src/`. |
 | `7cb5289` | 8 November 2026 | The model reader can use a second, account-based route to its model. About 22 lines in `src/ai/reader.ts`, `src/server/config.ts` and `src/server/bootstrap.ts`, 41 lines of tests, and the matching lines in the README, `docs/judges.md`, `docs/run-the-demo.md` and `.env.example`. |
 | `e5e6346` | 13 November 2026 | The reader's default model and its request settings were updated for the model's newer versions, which refuse two of the settings it sent. About 10 lines in `src/ai/reader.ts` and changed tests. |
+| `6c8f319` | 26 November 2026 | For the Digital Public Goods nomination, the page serves its four fonts from `public/` instead of Google Fonts: the font files, about 30 lines of `@font-face` in `public/styles.css`, a tighter content policy and two fewer links in `public/index.html`, and one test in `test/public/served-files.test.ts` that fails if the page loads anything from another host. The same commit adds `PRIVACY.md`, the font licences in `LICENSES/fonts/` and two README sections. |
 
 Other files that Kiro did not write: the steering text (ours; `bccca47` corrects one line in it), the dependency bumps
 (`e3c921b`, `16449f6`), the licence and README (`e056e23`, `72d5346`), the CI workflow
