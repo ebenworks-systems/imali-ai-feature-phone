@@ -11,7 +11,7 @@ app. The ledger exports every record as one JSON file in an open format, documen
 
 **Live demo:** https://imali-ai-feature-phone.vercel.app
 
-Kiro wrote the application code from the steering, specs and hooks in `.kiro/`. Three later changes to the code
+Kiro wrote the application code from the steering, specs and hooks in `.kiro/`. Four later changes to the code
 and its tests were made by hand, outside Kiro; `docs/built-with-kiro.md` lists them. This repository is our entry for
 Kiroween 2026 in the Resurrection category: the keypad phone and its dialled menus, brought back to keep a shop's books.
 
@@ -55,6 +55,20 @@ A repeated menu request saves once, and a repeated text callback gets the first 
 new. A callback key keeps `/ussd` and `/sms` closed to anyone but the network, and the public demo limits how many demo
 shops one visitor can make and removes demo shops after a week.
 
+## Development goals
+
+The ledger serves two targets of the UN Sustainable Development Goals:
+
+- SDG 8, target 8.3: "Promote development-oriented policies that support productive activities, decent job creation,
+  entrepreneurship, creativity and innovation, and encourage the formalization and growth of micro-, small- and
+  medium-sized enterprises, including through access to financial services."
+- SDG 9, target 9.3: "Increase the access of small-scale industrial and other enterprises, in particular in developing
+  countries, to financial services, including affordable credit, and their integration into value chains and markets."
+
+A shop owner with any phone that can dial a code or send a text keeps a dated record of every sale, expense, debt and
+payment. The export turns that record into one file the owner can show a lender, a supplier or a savings group, which
+is the record of trading that credit and formal growth start from.
+
 ## Run it locally
 
 You need Node.js 22.
@@ -67,6 +81,19 @@ npm run dev        # http://localhost:3000, records kept in memory
 With no variables set, the server keeps records in memory and reads messages with the rules only. Copy `.env.example`
 to `.env` to add a database or an Africa's Talking app. `docs/run-the-demo.md` explains each variable, the database
 set-up, the deploy and the sandbox callbacks.
+
+## Run it anywhere
+
+Every part the ledger needs is open source: Node.js, Hono, and PostgreSQL through the `postgres` driver. Three parts
+are built to be swapped for another provider:
+
+- The network gateway. Africa's Talking's menu and text callbacks arrive in `src/server/routes/at.ts`, which hands
+  them to `handleUssd` and `handleText`. Replies go out through the `SmsSender` interface in `src/server/sender.ts`
+  (`send(to, message)`). Any USSD or SMS gateway that posts callbacks needs a route of its own and a sender.
+- The store. `LedgerStore` in `src/store/interface.ts` has two versions, in memory and on Postgres.
+- The model reader. `ModelReader` in `src/ai/reader.ts` takes the text of one message (`read(text)`). The Gemini
+  reader is used when `GEMINI_API_KEY` is set. Leave it unset and the rules read every message they can, or put
+  another model behind the same interface.
 
 ## Run the tests
 
@@ -101,11 +128,18 @@ commit, and runs the type check and the tests each time Kiro finishes, so Kiro a
 in its own work. The briefs for the runs from 7 November 2026 on are in `docs/kiro-briefs/`; the first day's briefs were not
 kept.
 
+## Privacy and safety
+
+`PRIVACY.md` says what the ledger stores and for how long, who can read it, how an owner gets a copy or has a shop
+erased, the data protection laws an operator must follow, and how the design keeps the service from being used to harm
+anyone. Report a security or privacy problem to security@ebenworks.co.
+
 ## Outside code
 
 The server uses three npm packages: `hono` and `@hono/node-server` for the routes, and `postgres` for the database. The
-tests and build use `typescript`, `vitest`, `fast-check` and `@types/node`. The page loads the Fraunces, Geist, Geist
-Mono and VT323 fonts from Google Fonts. No code was copied from other projects.
+tests and build use `typescript`, `vitest`, `fast-check` and `@types/node`. The page serves the Fraunces, Geist, Geist
+Mono and VT323 fonts from its own folder (`public/`), under the SIL Open Font License 1.1; the licence texts are in
+`LICENSES/fonts/`. No code was copied from other projects.
 
 ## Licence
 

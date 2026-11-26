@@ -6,7 +6,19 @@ import { describe, expect, it } from 'vitest';
 const publicDir = new URL('../../public/', import.meta.url);
 
 // The page's own files. Add a file here only when the page needs it.
-const PAGE_FILES = ['api.js', 'index.html', 'ledger-logic.js', 'ledger.js', 'phone-logic.js', 'phone.js', 'styles.css'];
+const PAGE_FILES = [
+  'api.js',
+  'fraunces.woff2',
+  'geist-mono.woff2',
+  'geist.woff2',
+  'index.html',
+  'ledger-logic.js',
+  'ledger.js',
+  'phone-logic.js',
+  'phone.js',
+  'styles.css',
+  'vt323.woff2'
+];
 
 function listFiles(): string[] {
   // Paths relative to public/, with / as the separator. recursive: true also returns folders, so drop those.
@@ -42,6 +54,24 @@ describe('public/ holds only the files the page serves', () => {
       for (const match of source.matchAll(/from '\.\/([^']+)'/g)) {
         expect(files, `${name} imports ${match[1]}`).toContain(match[1]);
       }
+    }
+  });
+
+  it('loads nothing from another host: fonts and styles come from this folder', () => {
+    const files = listFiles();
+    const html = readFileSync(new URL('index.html', publicDir), 'utf8');
+    const css = readFileSync(new URL('styles.css', publicDir), 'utf8');
+    // Links a visitor clicks (<a href>) may go anywhere; what the page itself loads (<link>, <script>, <img>) may not.
+    expect(html, 'index.html loads from an outside address').not.toMatch(/<(?:link|script|img)\b[^>]*(?:src|href)="https?:/i);
+    expect(html).not.toMatch(/fonts\.googleapis|fonts\.gstatic/i);
+    const csp = html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] ?? '';
+    expect(csp).toContain("font-src 'self'");
+    expect(csp).toContain("style-src 'self';");
+    const urls = [...css.matchAll(/url\(\s*'([^']+)'\s*\)/g)].map((match) => match[1]!);
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(url, 'styles.css loads from another host').not.toMatch(/^[a-z]+:/i);
+      expect(files, `styles.css loads ${url}`).toContain(url);
     }
   });
 });

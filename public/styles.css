@@ -1,6 +1,37 @@
 /* Imali AI feature-phone ledger - live demo.
    Every colour, font, radius, shadow, easing and duration lives in the :root block. Nothing below holds a colour literal. */
 
+/* The four fonts are served from this folder (Latin subsets from Fontsource 5.3.0, SIL Open Font License 1.1; the
+   licence texts are in LICENSES/fonts/), so the page loads nothing from another host. */
+@font-face {
+  font-family: 'Fraunces';
+  src: url('fraunces.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('geist.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('geist-mono.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'VT323';
+  src: url('vt323.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
 
