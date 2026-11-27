@@ -32,7 +32,9 @@ describe('vercel.json', () => {
   });
 });
 
-describe('api/index.ts', () => {
+// Each test imports api/index.ts after vi.resetModules(), and the first import transforms the whole server graph.
+// That took over 5 s (vitest's default) on a heavily loaded machine, so these tests get 20 s.
+describe('api/index.ts', { timeout: 20_000 }, () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
