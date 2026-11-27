@@ -11,7 +11,7 @@ app. The ledger exports every record as one JSON file in an open format, documen
 
 **Live demo:** https://imali-ai-feature-phone.vercel.app
 
-Kiro wrote the application code from the steering, specs and hooks in `.kiro/`. Five later changes to the code
+Kiro wrote the application code from the steering, specs and hooks in `.kiro/`. Six later changes to the code
 and its tests were made by hand, outside Kiro; `docs/built-with-kiro.md` lists them. This repository is our entry for
 Kiroween 2026 in the Resurrection category: the keypad phone and its dialled menus, brought back to keep a shop's books.
 

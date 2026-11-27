@@ -92,7 +92,7 @@ spec) were not kept.
 
 ## Changes made outside Kiro
 
-Everything under `src/`, `public/`, `api/`, `sql/`, `scripts/` and `test/` was written by Kiro, except the five commits below. Our
+Everything under `src/`, `public/`, `api/`, `sql/`, `scripts/` and `test/` was written by Kiro, except the six commits below. Our
 team made them by hand after the build. The commits are in the history, so you can read the diffs.
 
 | Commit | Date | What it changed |
@@ -102,6 +102,7 @@ team made them by hand after the build. The commits are in the history, so you c
 | `e5e6346` | 13 November 2026 | The reader's default model and its request settings were updated for the model's newer versions, which refuse two of the settings it sent. About 10 lines in `src/ai/reader.ts` and changed tests. |
 | `6c8f319` | 26 November 2026 | For the Digital Public Goods nomination, the page serves its four fonts from `public/` instead of Google Fonts: the font files, about 30 lines of `@font-face` in `public/styles.css`, a tighter content policy and two fewer links in `public/index.html`, and one test in `test/public/served-files.test.ts` that fails if the page loads anything from another host. The same commit adds `PRIVACY.md`, the font licences in `LICENSES/fonts/` and two README sections. |
 | `26a09a0` | 27 November 2026 | The page's footer link to Imali AI points at Imali AI's main site, https://imaliai.co.za: one line in `public/index.html`, and the same address in the last line of `docs/export-format.md`. |
+| `dc98f31` | 27 November 2026 | The three tests in `test/server/vercel.test.ts` that import `api/index.ts` get 20 seconds instead of vitest's default 5, because the first import builds the whole server and took just over 5 seconds on a heavily loaded machine. One line and a two-line comment; no change under `src/`. |
 
 Other files that Kiro did not write: the steering text (ours; `bccca47` corrects one line in it), the dependency bumps
 (`e3c921b`, `16449f6`), the licence and README (`e056e23`, `72d5346`), the CI workflow
