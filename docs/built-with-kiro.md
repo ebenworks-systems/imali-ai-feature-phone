@@ -3,7 +3,7 @@
 Kiro wrote the application code in this repository: the ledger core, the text-message reader and handler, the dialled
 menu, the server and its Postgres store, and the browser phone. We wrote the steering files, the briefs that started
 each spec, and the reviews, and every fault our reviews found went back to Kiro as a new task. After the build we also
-changed the model reader, the page's fonts, its link to Imali AI and some tests by hand, outside Kiro; "Changes made outside Kiro" below lists each one.
+changed the model reader, the page's fonts, its link to Imali AI, some tests and the tests' time limit by hand, outside Kiro; "Changes made outside Kiro" below lists each one.
 
 ## The set-up
 
@@ -92,7 +92,7 @@ spec) were not kept.
 
 ## Changes made outside Kiro
 
-Everything under `src/`, `public/`, `api/`, `sql/`, `scripts/` and `test/` was written by Kiro, except the six commits below. Our
+Everything under `src/`, `public/`, `api/`, `sql/`, `scripts/` and `test/` was written by Kiro, except the seven commits below. Our
 team made them by hand after the build. The commits are in the history, so you can read the diffs.
 
 | Commit | Date | What it changed |
@@ -103,6 +103,7 @@ team made them by hand after the build. The commits are in the history, so you c
 | `6c8f319` | 26 November 2026 | For the Digital Public Goods nomination, the page serves its four fonts from `public/` instead of Google Fonts: the font files, about 30 lines of `@font-face` in `public/styles.css`, a tighter content policy and two fewer links in `public/index.html`, and one test in `test/public/served-files.test.ts` that fails if the page loads anything from another host. The same commit adds `PRIVACY.md`, the font licences in `LICENSES/fonts/` and two README sections. |
 | `26a09a0` | 27 November 2026 | The page's footer link to Imali AI points at Imali AI's main site, https://imaliai.co.za: one line in `public/index.html`, and the same address in the last line of `docs/export-format.md`. |
 | `dc98f31` | 27 November 2026 | The three tests in `test/server/vercel.test.ts` that import `api/index.ts` get 20 seconds instead of vitest's default 5, because the first import builds the whole server and took just over 5 seconds on a heavily loaded machine. One line and a two-line comment; no change under `src/`. |
+| `e0e1d09` | 27 November 2026 | `vitest.config.ts`, which Kiro wrote, gives every test and hook 30 seconds instead of vitest's default 5 seconds for a test and 10 for a hook. Tests that take 150 to 350 ms alone went past 5 seconds when the machine running them was heavily loaded. Four lines; no change under `src/` or `test/`. |
 
 Other files that Kiro did not write: the steering text (ours; `bccca47` corrects one line in it), the dependency bumps
 (`e3c921b`, `16449f6`), the licence and README (`e056e23`, `72d5346`), the CI workflow
