@@ -306,4 +306,4 @@ The current version is `1`. If the format changes in the future:
 
 ## Questions?
 
-This is an open format. Anyone may read it or write a reader for it. Imali AI's site is https://imali-ai.ebenworks.co.
+This is an open format. Anyone may read it or write a reader for it. Imali AI's site is https://imaliai.co.za.
